@@ -19,7 +19,7 @@ The dynamic pages' synthesizers receive the stable pages as context. So "bumped 
 
 You edit any page in the browser (Milkdown WYSIWYG); commits land in a local bare git repo.
 
-## Quickstart (Docker)
+## Quickstart (Docker, prebuilt images from GHCR)
 
 Requirements: Docker + Docker Compose v2.
 
@@ -29,12 +29,16 @@ cd tiny-teams-with-tokens
 cp .env.example .env
 # add ANTHROPIC_API_KEY to .env (and GITHUB_TOKEN for higher GH rate limits)
 
-docker compose up --build
+docker compose pull && docker compose up
 # backend  → http://localhost:8765
 # frontend → http://localhost:3000
 ```
 
-The SQLite DB and the bare git repo for reports persist in a named volume (`ttt-data`). To start clean: `docker compose down -v`.
+Images are published on every push to `main` to `ghcr.io/juliarvalenti/tiny-teams-with-tokens-{backend,frontend}`. To pin a specific tag, set `TTT_IMAGE_TAG=sha-<short-sha>` in `.env`.
+
+To build locally instead of pulling: `docker compose build && docker compose up`.
+
+State (SQLite + report git repo) persists in a named volume (`ttt-data`). To wipe: `docker compose down -v`.
 
 ## Quickstart (local dev)
 

@@ -1,5 +1,7 @@
 services:
   backend:
+    # Pull from GHCR by default. Use `docker compose build` to build locally.
+    image: ghcr.io/juliarvalenti/tiny-teams-with-tokens-backend:${TTT_IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: backend/Dockerfile
@@ -16,6 +18,7 @@ services:
       - ttt-data:/data
 
   frontend:
+    image: ghcr.io/juliarvalenti/tiny-teams-with-tokens-frontend:${TTT_IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: frontend/Dockerfile
