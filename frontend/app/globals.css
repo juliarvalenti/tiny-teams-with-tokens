@@ -16,4 +16,24 @@ body {
 }
 .milkdown-host .milkdown .ProseMirror {
   padding: 1rem 1.25rem !important;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+/* Serif only for headings — bodies stay on system sans for density. */
+.milkdown-host .milkdown .ProseMirror h1,
+.milkdown-host .milkdown .ProseMirror h2,
+.milkdown-host .milkdown .ProseMirror h3,
+.milkdown-host .milkdown .ProseMirror h4 {
+  font-family: var(--font-serif), Georgia, "Times New Roman", serif;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+  font-weight: 600;
+}
+
+/* Inline + block code stay monospace — much easier to scan SHAs / paths. */
+.milkdown-host .milkdown .ProseMirror code,
+.milkdown-host .milkdown .ProseMirror pre {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.9em;
 }
