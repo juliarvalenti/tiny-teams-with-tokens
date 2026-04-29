@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# Env
+.env
+.env.local
+
+# Data — local SQLite + report repo are dev artifacts
+data/ttt.db
+data/ttt.db-journal
+data/reports.git/
+data/reports-wc/
+
+# Node
+node_modules/
+.next/
+out/
+dist/
+*.tsbuildinfo
+
+# OS
+.DS_Store

@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light dark;
+}
+
+body {
+  @apply bg-neutral-50 text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100;
+}
+
+/* Tighten Crepe's default editor padding — its theme ships ~80px+ side padding. */
+.milkdown-host .milkdown {
+  padding: 0 !important;
+}
+.milkdown-host .milkdown .ProseMirror {
+  padding: 1rem 1.25rem !important;
+}

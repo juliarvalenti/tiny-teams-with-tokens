@@ -1,0 +1,33 @@
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from ttt.api import projects, reports
+from ttt.db import init_db
+from ttt.reports.repo import init_report_repo
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    init_report_repo()
+    yield
+
+
+app = FastAPI(title="Tiny Teams with Tokens", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(projects.router, prefix="/api")
+app.include_router(reports.router, prefix="/api")
+
+
+@app.get("/api/health")
+def health() -> dict[str, str]:
+    return {"status": "ok"}

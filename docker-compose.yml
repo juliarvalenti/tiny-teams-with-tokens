@@ -1,0 +1,28 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "8765:8765"
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY must be set in .env or shell}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      CONFLUENCE_BASE_URL: ${CONFLUENCE_BASE_URL:-}
+      CONFLUENCE_USER: ${CONFLUENCE_USER:-}
+      CONFLUENCE_TOKEN: ${CONFLUENCE_TOKEN:-}
+      WEBEX_TOKEN: ${WEBEX_TOKEN:-}
+    volumes:
+      - ttt-data:/data
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  ttt-data:
