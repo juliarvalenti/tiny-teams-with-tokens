@@ -41,3 +41,14 @@ class IngestRun(SQLModel, table=True):
     finished_at: datetime | None = None
     error: str | None = None
     log: str = ""
+
+
+class ChatSession(SQLModel, table=True):
+    """One chat thread per project. The Agent SDK persists transcripts to disk
+    keyed by `sdk_session_id`; we hold the pointer here so we can resume."""
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    project_id: UUID = Field(foreign_key="project.id", index=True, unique=True)
+    sdk_session_id: str | None = None  # captured from ResultMessage on first turn
+    created_at: datetime = Field(default_factory=_utcnow)
+    last_used_at: datetime = Field(default_factory=_utcnow)

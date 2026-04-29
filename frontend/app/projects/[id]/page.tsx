@@ -2,6 +2,7 @@
 
 import { use, useEffect, useMemo, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
+import { ChatPanel } from "@/components/ChatPanel";
 import { ReingestButton } from "@/components/ReingestButton";
 import { ReportEditor } from "@/components/ReportEditor";
 import { WikiSidebar } from "@/components/WikiSidebar";
@@ -75,7 +76,7 @@ export default function ProjectDetailPage({
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[220px_1fr]">
+      <div className="grid gap-6 lg:grid-cols-[200px_1fr_360px]">
         <aside className="lg:sticky lg:top-6 self-start">
           {report.data ? (
             <WikiSidebar
@@ -112,6 +113,10 @@ export default function ProjectDetailPage({
             <p className="text-sm text-neutral-500">Pick a page from the sidebar.</p>
           )}
         </section>
+
+        <aside className="lg:sticky lg:top-6 self-start">
+          <ChatPanel projectId={id} reportKey={reportKey} version={version} />
+        </aside>
       </div>
 
       {createUnder !== undefined && version != null && (

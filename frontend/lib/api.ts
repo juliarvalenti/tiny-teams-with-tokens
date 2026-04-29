@@ -89,4 +89,7 @@ export const api = {
       `/api/projects/${projectId}/reports/${version}/pages`,
       { method: "POST", body: JSON.stringify(body) },
     ),
+
+  resetChat: (projectId: string) =>
+    req<{ ok: boolean }>(`/api/projects/${projectId}/chat/reset`, { method: "POST" }),
 };
