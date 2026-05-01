@@ -12,7 +12,13 @@ function age(iso: string | null): string {
   return `${min}m ago`;
 }
 
-export function ProjectCard({ p }: { p: ProjectSummary }) {
+export function ProjectCard({
+  p,
+  relations,
+}: {
+  p: ProjectSummary;
+  relations?: string[];
+}) {
   return (
     <Link
       href={`/projects/${p.id}`}
@@ -30,6 +36,18 @@ export function ProjectCard({ p }: { p: ProjectSummary }) {
         <span>v{p.latest_version ?? "—"}</span>
         <span>updated {age(p.latest_ingested_at)}</span>
       </div>
+      {relations && relations.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1">
+          {relations.map((r, i) => (
+            <span
+              key={i}
+              className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400"
+            >
+              {r}
+            </span>
+          ))}
+        </div>
+      )}
     </Link>
   );
 }

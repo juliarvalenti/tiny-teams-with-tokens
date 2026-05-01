@@ -23,6 +23,14 @@ class PageCreate(BaseModel):
     path: str  # must end in .md
     title: str
     parent_path: str | None = None  # for hierarchical placement
+    kind: str = "stable"  # stable | dynamic | hidden
+    author: str = "ttt-web"
+
+
+class FrontmatterPatch(BaseModel):
+    kind: str | None = None
+    title: str | None = None
+    order: int | None = None
     author: str = "ttt-web"
 
 
@@ -208,7 +216,11 @@ def create_page(
     if final_path in existing:
         raise HTTPException(409, f"page already exists: {final_path}")
 
-    fm = {"title": body.title, "kind": "stable", "order": 999}
+    kind = body.kind.lower()
+    if kind not in ("stable", "dynamic", "hidden", "report"):
+        raise HTTPException(400, f"invalid kind: {body.kind!r}")
+
+    fm = {"title": body.title, "kind": kind, "order": 999}
     initial = report_schema.serialize_frontmatter(
         fm,
         f"# {body.title}\n\n{report_schema.EMPTY_PAGE_PLACEHOLDER}\n",
@@ -220,4 +232,53 @@ def create_page(
         message=f"create page {final_path} by {body.author}",
         author=body.author,
     )
-    return {"path": final_path, "title": body.title}
+    return {"path": final_path, "title": body.title, "kind": kind}
+
+
+@router.patch("/projects/{project_id}/reports/{version}/pages/{page_path:path}/frontmatter")
+def patch_frontmatter(
+    project_id: UUID,
+    version: int,
+    page_path: str,
+    body: FrontmatterPatch,
+    session: Session = Depends(get_session),
+) -> dict[str, Any]:
+    """Update specific frontmatter fields without touching the body. Used by
+    the kind toggle in the page header — the body would be unsafe to round-trip
+    through Crepe just to change a metadata line."""
+    project = session.get(Project, project_id)
+    if not project:
+        raise HTTPException(404, "project not found")
+    if project.locked:
+        raise HTTPException(409, "project is locked while ingest is running")
+
+    if body.kind is not None and body.kind.lower() not in (
+        "stable",
+        "dynamic",
+        "hidden",
+        "report",
+    ):
+        raise HTTPException(400, f"invalid kind: {body.kind!r}")
+
+    try:
+        existing_md = report_repo.read_page(project_id, page_path)
+    except LookupError:
+        raise HTTPException(404, f"page not found: {page_path}")
+
+    fm, page_body = report_schema.parse_frontmatter(existing_md)
+    if body.kind is not None:
+        fm["kind"] = body.kind.lower()
+    if body.title is not None:
+        fm["title"] = body.title
+    if body.order is not None:
+        fm["order"] = body.order
+
+    new_md = report_schema.serialize_frontmatter(fm, page_body)
+    report_repo.write_page(
+        project_id,
+        page_path,
+        new_md,
+        message=f"update frontmatter on {page_path} by {body.author}",
+        author=body.author,
+    )
+    return {"path": page_path, "frontmatter": fm}

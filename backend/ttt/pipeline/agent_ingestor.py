@@ -11,15 +11,12 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from pathlib import Path
 from uuid import UUID
 
 import json
 
 from claude_agent_sdk import (
     AssistantMessage,
-    ClaudeAgentOptions,
-    HookMatcher,
     ResultMessage,
     SystemMessage,
     TextBlock,
@@ -29,10 +26,9 @@ from claude_agent_sdk import (
 )
 from sqlmodel import Session, select
 
-from ttt.config import settings
 from ttt.db import engine
-from ttt.models import IngestRun, PageRevision, Project, Report
-from ttt.pipeline.mcp_github import build_github_mcp
+from ttt.models import IngestRun, Project, Report
+from ttt.pipeline.agent_core import build_agent_options
 from ttt.reports import repo as report_repo
 from ttt.reports import schema as report_schema
 
@@ -59,12 +55,19 @@ def _build_system_prompt(
         )
 
     mode_block = (
-        "MODE: GREENFIELD. The wiki is empty. Write ALL 8 pages."
+        "MODE: GREENFIELD.\n\n"
+        "The wiki is empty. Write all the seed pages listed below. Default kind for each is shown — write that into the YAML frontmatter."
         if is_greenfield
         else (
-            "MODE: INCREMENTAL. The 4 stable pages already exist; READ them first to "
-            "understand the project, but DO NOT rewrite them. Rewrite only the dynamic "
-            "and report pages: `status.md`, `activity.md`, `conversations.md`, `standup.md`."
+            "MODE: INCREMENTAL.\n\n"
+            "The page kind is declared in each page's YAML frontmatter (`kind: stable|dynamic|hidden|report`). "
+            "**The frontmatter is authoritative — trust it, not the page path.** Users may have pinned pages as stable "
+            "or flipped the kind on existing ones.\n\n"
+            "- READ every existing page first.\n"
+            "- DO NOT rewrite pages with `kind: stable` — they're pinned by the user.\n"
+            "- DO NOT rewrite pages with `kind: hidden` unless the user explicitly asks. You MAY append short dated notes to `memory.md` if there's something worth remembering across ingests.\n"
+            "- Rewrite pages with `kind: dynamic` and `kind: report`. Preserve their frontmatter; only the body should change.\n"
+            "- If a custom page exists with a kind you don't recognize, leave it alone.\n"
         )
     )
 
@@ -81,9 +84,11 @@ PROJECT CHARTER (seed context, may be empty):
 
 {repos_block}
 
-PAGE STRUCTURE — there are 8 pages:
+PAGE STRUCTURE — these pages exist or should be created:
 
 {chr(10).join(page_lines)}
+
+The `memory.md` (kind: hidden) page is YOUR working memory. It's not surfaced to users by default. Read it on every ingest. You may append short notes to it that you want to remember across ingests — context that didn't fit anywhere else, recurring patterns, things you noticed about how this team works. Keep entries dated and tight.
 
 Each page has YAML frontmatter you MUST preserve / write:
 
@@ -149,43 +154,14 @@ def _stringify_tool_input(value: object) -> str:
         return str(value)[:300]
 
 
-def _make_record_hook(project_id: UUID, run_id: UUID):
-    """PostToolUse hook: every Edit/Write of a wiki file → PageRevision row.
-    Also appends a "wrote <path>" line to the ingest log."""
+def _make_log_on_write(run_id: UUID):
+    """Closure for the shared persist hook's `on_write` callback — emits the
+    Docker-log line so the IngestRun.log stream shows file writes."""
 
-    project_dir = (settings.ttt_wiki_dir / str(project_id)).resolve()
+    def _log(page_path: str, byte_count: int) -> None:
+        _append_log(run_id, f"[{_now_iso()}] ✎ wrote {page_path} ({byte_count} bytes)")
 
-    async def record(input_data, _tool_use_id, _context):
-        tool_name = input_data.get("tool_name", "")
-        if tool_name not in {"Edit", "Write"}:
-            return {}
-        tool_input = input_data.get("tool_input") or {}
-        file_path = tool_input.get("file_path") or tool_input.get("path")
-        if not file_path:
-            return {}
-        try:
-            abs_path = Path(file_path).resolve()
-            rel = abs_path.relative_to(project_dir)
-        except (ValueError, OSError):
-            return {}
-        if not abs_path.exists():
-            return {}
-        try:
-            content = abs_path.read_text()
-            page_path = str(rel).replace("\\", "/")
-            report_repo.write_page(
-                project_id,
-                page_path,
-                content,
-                message=f"agent ingest: {page_path}",
-                author="ttt-pipeline",
-            )
-            _append_log(run_id, f"[{_now_iso()}] ✎ wrote {page_path} ({len(content)} bytes)")
-        except Exception:
-            log.exception("agent persist failed for %s", file_path)
-        return {}
-
-    return record
+    return _log
 
 
 async def run_agent_ingest(
@@ -209,12 +185,7 @@ async def run_agent_ingest(
         is_greenfield = prior is None
         next_version = (prior.version + 1) if prior else 1
 
-        # Sync filesystem cache to disk so the agent's Read tool sees current state.
-        report_repo.sync_to_disk(project.id)
-        project_dir = (settings.ttt_wiki_dir / str(project.id))
-        project_dir.mkdir(parents=True, exist_ok=True)
-
-        # Pre-create the Report so PostToolUse hook can attach revisions to it.
+        # Pre-create the Report so the persist hook can tag revisions with it.
         report = Report(
             project_id=project.id,
             version=next_version,
@@ -225,40 +196,15 @@ async def run_agent_ingest(
         session.commit()
         session.refresh(report)
 
-        gh_server = build_github_mcp(project.repos, token=settings.github_token)
-
-        options = ClaudeAgentOptions(
-            cwd=str(project_dir),
-            allowed_tools=[
-                "Read",
-                "Edit",
-                "Write",
-                "Glob",
-                "Grep",
-                "mcp__github__github_list_commits",
-                "mcp__github__github_list_releases",
-                "mcp__github__github_list_issues",
-                "mcp__github__github_get_issue",
-                "mcp__github__github_list_pulls",
-                "mcp__github__github_get_pr",
-                "mcp__github__github_search_issues",
-                "mcp__github__github_get_codeowners",
-            ],
-            permission_mode="acceptEdits",
+        options = build_agent_options(
+            project_id=project.id,
+            project_repos=project.repos,
             system_prompt=_build_system_prompt(project, is_greenfield, project.repos),
             model=INGEST_MODEL,
-            setting_sources=[],
-            mcp_servers={"github": gh_server},
-            env={
-                "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
-                "ANTHROPIC_API_KEY": settings.anthropic_api_key,
-            },
             max_turns=MAX_TURNS,
-            hooks={
-                "PostToolUse": [
-                    HookMatcher(matcher="Edit|Write", hooks=[_make_record_hook(project.id, run.id)])
-                ],
-            },
+            persist_author="ttt-pipeline",
+            report_id=report.id,
+            on_write=_make_log_on_write(run.id),
         )
 
         prompt = (
@@ -331,31 +277,8 @@ async def run_agent_ingest(
                 "v%d missing required pages after agent run: %s", next_version, missing
             )
 
-        # Re-attach the agent's revisions to this report row so history is queryable.
-        with Session(engine) as ses:
-            ses.exec(
-                select(PageRevision)
-                .where(
-                    PageRevision.project_id == project.id,
-                    PageRevision.report_id.is_(None),
-                    PageRevision.author == "ttt-pipeline",
-                    PageRevision.created_at >= report.ingested_at,
-                )
-            )
-            revs = ses.exec(
-                select(PageRevision)
-                .where(
-                    PageRevision.project_id == project.id,
-                    PageRevision.report_id.is_(None),
-                    PageRevision.author == "ttt-pipeline",
-                    PageRevision.created_at >= report.ingested_at,
-                )
-            ).all()
-            for r in revs:
-                r.report_id = report.id
-                ses.add(r)
-            ses.commit()
-
+        # No need to re-attach revisions — the persist hook tagged them with
+        # report.id at write time.
         report.summary = _summary_from_overview(committed)
         run.status = "success"
         run.finished_at = datetime.now(timezone.utc)

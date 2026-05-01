@@ -135,15 +135,23 @@ async def run_ingest(
             )
             stable_bodies = await write_founding_pages(stable_inputs)
         else:
-            # Strip frontmatter from prior stable pages — synthesizers should see only body content.
+            # Frontmatter is the runtime source of truth — preserve any page
+            # that's stable OR hidden in the prior wiki, regardless of path.
+            preserve_paths = report_schema.stable_paths_in(prior_pages)
             stable_bodies = {
                 path: report_schema.parse_frontmatter(prior_pages[path])[1].strip()
-                for path in report_schema.stable_paths()
-                if path in prior_pages
+                for path in preserve_paths
             }
-            # If a stable page is missing in the prior version, regenerate the founding pass to fill it.
-            if not all(p in stable_bodies for p in report_schema.stable_paths()):
-                log.warning("stable pages missing on incremental — re-running founding pass")
+            # Pull bodies for the 4 founding pages (used as grounding context
+            # for the dynamic synthesizers). They may be marked stable or
+            # dynamic in frontmatter — either way we read the prior body.
+            for path in report_schema.FOUNDING_PATHS:
+                if path in prior_pages and path not in stable_bodies:
+                    stable_bodies[path] = report_schema.parse_frontmatter(prior_pages[path])[1].strip()
+            # If any of the founding pages is missing on incremental, refill via founding pass.
+            seed_required = [p for p in report_schema.FOUNDING_PATHS if p not in stable_bodies]
+            if seed_required:
+                log.warning("founding pages missing on incremental: %s", seed_required)
                 stable_inputs = PageInputs(
                     project_name=project.name,
                     charter=project.charter,
@@ -183,15 +191,29 @@ async def run_ingest(
         # 5. Compose pages with frontmatter and persist.
         all_pages: dict[str, str] = {}
         if is_greenfield:
-            for path in report_schema.stable_paths():
+            # Write the 4 founding pages (overview/team/glossary/architecture)
+            # with their default kind (currently dynamic). Users can pin any
+            # of them as stable post-greenfield via the kind toggle.
+            for path in report_schema.FOUNDING_PATHS:
                 spec = report_schema.SPEC_BY_PATH[path]
                 all_pages[path] = report_schema.page_with_frontmatter(spec, stable_bodies[path])
+            # Seed each hidden page (e.g. memory.md) with its static template.
+            for path in report_schema.default_hidden_paths():
+                spec = report_schema.SPEC_BY_PATH[path]
+                seed = report_schema.MEMORY_SEED if path == "memory.md" else ""
+                all_pages[path] = report_schema.page_with_frontmatter(spec, seed)
         else:
-            # On incremental, we still re-write stable pages only if we just regenerated some.
-            for path in report_schema.stable_paths():
+            # Refill any founding page missing from the prior wiki.
+            for path in report_schema.FOUNDING_PATHS:
                 if path not in prior_pages:
                     spec = report_schema.SPEC_BY_PATH[path]
                     all_pages[path] = report_schema.page_with_frontmatter(spec, stable_bodies[path])
+            # And seed any hidden pages that have gone missing.
+            for path in report_schema.default_hidden_paths():
+                if path not in prior_pages:
+                    spec = report_schema.SPEC_BY_PATH[path]
+                    seed = report_schema.MEMORY_SEED if path == "memory.md" else ""
+                    all_pages[path] = report_schema.page_with_frontmatter(spec, seed)
 
         for path, body in dynamic_bodies.items():
             spec = report_schema.SPEC_BY_PATH[path]

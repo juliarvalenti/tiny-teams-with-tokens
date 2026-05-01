@@ -15,14 +15,10 @@ import json
 import logging
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
-from uuid import UUID
 
 from claude_agent_sdk import (
     AssistantMessage,
-    ClaudeAgentOptions,
-    HookMatcher,
     ResultMessage,
     SystemMessage,
     TextBlock,
@@ -32,15 +28,13 @@ from claude_agent_sdk import (
 )
 from claude_agent_sdk.types import StreamEvent
 
-from ttt.config import settings
 from ttt.models import Project
-from ttt.reports import repo as report_repo
+from ttt.pipeline.agent_core import build_agent_options
 from ttt.reports import schema as report_schema
 
 log = logging.getLogger("ttt.chat")
 
 CHAT_MODEL = "claude-sonnet-4-6"
-ALLOWED_TOOLS = ["Read", "Edit", "Write", "Glob", "Grep", "WebFetch", "WebSearch"]
 MAX_TURNS = 20
 
 
@@ -99,54 +93,6 @@ Project anchor (read these before answering substantive questions about identity
 When you reference wiki content, cite it like `(see overview.md)`. When you fetch external information, cite the URL. When you edit a page, briefly summarize what you changed in your reply. Be concise; the reader is scanning."""
 
 
-# ---------- PostToolUse hook: commit edits ----------
-
-def make_commit_hook(project_id: UUID):
-    """Returns a PostToolUse hook that records every chat Edit/Write as a new
-    PageRevision row. The agent edits the filesystem cache; this hook re-reads
-    the file and persists it to sqlite."""
-
-    project_dir = (settings.ttt_wiki_dir / str(project_id)).resolve()
-
-    async def commit_edited_file(input_data, tool_use_id, context):
-        tool_name = input_data.get("tool_name", "")
-        if tool_name not in {"Edit", "Write"}:
-            return {}
-
-        tool_input = input_data.get("tool_input") or {}
-        file_path = tool_input.get("file_path") or tool_input.get("path")
-        if not file_path:
-            return {}
-
-        try:
-            abs_path = Path(file_path).resolve()
-            rel = abs_path.relative_to(project_dir)
-        except (ValueError, OSError) as e:
-            log.warning("chat edit outside project dir, skipping: %s (%s)", file_path, e)
-            return {}
-
-        if not abs_path.exists():
-            log.warning("chat edit hook: %s no longer exists", abs_path)
-            return {}
-
-        try:
-            content = abs_path.read_text()
-            page_path = str(rel).replace("\\", "/")
-            report_repo.write_page(
-                project_id,
-                page_path,
-                content,
-                message=f"chat edit: {page_path}",
-                author="ttt-chat",
-            )
-            log.info("chat persisted %s", page_path)
-        except Exception:
-            log.exception("chat persist hook failed for %s", file_path)
-        return {}
-
-    return commit_edited_file
-
-
 # ---------- streaming entrypoint ----------
 
 async def stream_chat(
@@ -159,25 +105,16 @@ async def stream_chat(
     """Run one chat turn against the Agent SDK and yield ChatEvents the API
     layer can fan out to SSE."""
 
-    project_dir = settings.ttt_wiki_dir / str(project.id)
-    project_dir.mkdir(parents=True, exist_ok=True)
-    # Make sure the FS cache reflects the latest sqlite state before the agent reads.
-    report_repo.sync_to_disk(project.id)
-
-    options = ClaudeAgentOptions(
-        cwd=str(project_dir),
-        allowed_tools=ALLOWED_TOOLS,
-        permission_mode="acceptEdits",
+    options = build_agent_options(
+        project_id=project.id,
+        project_repos=project.repos,
         system_prompt=build_system_prompt(project, stable_pages),
         model=CHAT_MODEL,
-        resume=sdk_session_id,
-        setting_sources=[],
-        env={"CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1", "ANTHROPIC_API_KEY": settings.anthropic_api_key},
-        include_partial_messages=True,
         max_turns=MAX_TURNS,
-        hooks={
-            "PostToolUse": [HookMatcher(matcher="Edit|Write", hooks=[make_commit_hook(project.id)])],
-        },
+        persist_author="ttt-chat",
+        report_id=None,  # chat edits aren't tied to a Report row
+        resume=sdk_session_id,
+        include_partial_messages=True,
     )
 
     try:

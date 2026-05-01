@@ -25,16 +25,32 @@ class PageSpec:
 
 # Default page set seeded on greenfield. Order is sidebar order at the same
 # depth; nesting is purely path-derived (`a/b.md` is a child of `a.md`).
+# All seed pages start as `dynamic` — the agent owns the wheel on greenfield
+# and on every reingest. Users can pin a page as `stable` later via the kind
+# toggle (or flip a page to `hidden`); the runtime trusts frontmatter.
 DEFAULT_PAGES: tuple[PageSpec, ...] = (
     PageSpec("standup.md",        "report",  "The Standup",   -10, ("overview.md", "team.md", "glossary.md")),
-    PageSpec("overview.md",      "stable",  "Overview",      0),
-    PageSpec("team.md",           "stable",  "Team",          10),
-    PageSpec("glossary.md",       "stable",  "Glossary",      20),
-    PageSpec("architecture.md",   "stable",  "Architecture",  30),
-    PageSpec("status.md",         "dynamic", "Status",        40, ("overview.md", "team.md", "glossary.md")),
-    PageSpec("activity.md",       "dynamic", "Activity",      50, ("overview.md", "glossary.md")),
-    PageSpec("conversations.md",  "dynamic", "Conversations", 60, ("overview.md", "team.md")),
+    PageSpec("overview.md",       "dynamic", "Overview",        0),
+    PageSpec("team.md",           "dynamic", "Team",           10),
+    PageSpec("glossary.md",       "dynamic", "Glossary",       20),
+    PageSpec("architecture.md",   "dynamic", "Architecture",   30),
+    PageSpec("status.md",         "dynamic", "Status",         40, ("overview.md", "team.md", "glossary.md")),
+    PageSpec("activity.md",       "dynamic", "Activity",       50, ("overview.md", "glossary.md")),
+    PageSpec("conversations.md",  "dynamic", "Conversations",  60, ("overview.md", "team.md")),
+    PageSpec("memory.md",         "hidden",  "Memory",        100),
 )
+
+
+# Seed body for hidden memory pages. Static: not LLM-generated. The agent
+# can append to it on subsequent ingests / chats to accumulate cross-ingest
+# context the user shouldn't see in the wiki.
+MEMORY_SEED = """# Memory
+
+_Agent-only notes. Hidden from the wiki by default. Toggle via the eye icon at the bottom of the sidebar to see / edit. The agent reads this on every ingest and may append observations it wants to remember._
+
+## Notes
+- _(none yet — populated as the agent works)_
+"""
 
 # Pages that surface as their own UI element (rendered above the wiki, not in
 # the sidebar tree). The sidebar tree should filter these out.
@@ -46,21 +62,80 @@ SPEC_BY_PATH: dict[str, PageSpec] = {p.path: p for p in DEFAULT_PAGES}
 EMPTY_PAGE_PLACEHOLDER = "_(no content yet)_"
 
 
-def stable_paths() -> list[str]:
+# ---------- Default-list helpers (seed-only) ----------
+#
+# These iterate DEFAULT_PAGES — the *seed* list written on greenfield. They
+# are NOT authoritative at runtime: a user can create custom pages and flip
+# kinds via the UI, after which the file's YAML frontmatter is the source of
+# truth. Code that decides "what to preserve / rewrite on incremental" must
+# call `kinds_from_pages(prior_pages)`, not these.
+
+
+def default_stable_paths() -> list[str]:
     return [p.path for p in DEFAULT_PAGES if p.kind == "stable"]
 
 
-def dynamic_paths() -> list[str]:
+def default_dynamic_paths() -> list[str]:
     return [p.path for p in DEFAULT_PAGES if p.kind == "dynamic"]
 
 
-def report_paths() -> list[str]:
+def default_report_paths() -> list[str]:
     return [p.path for p in DEFAULT_PAGES if p.kind == "report"]
+
+
+def default_hidden_paths() -> list[str]:
+    return [p.path for p in DEFAULT_PAGES if p.kind == "hidden"]
+
+
+# Pages the founding synthesizer is responsible for filling in on greenfield
+# (overview / team / glossary / architecture). These were the original
+# "stable" set; they're now kind=dynamic by default but the static path's
+# greenfield still routes them through the founding synthesizer because that
+# prompt knows how to derive identity content from raw deltas.
+FOUNDING_PATHS: tuple[str, ...] = (
+    "overview.md",
+    "team.md",
+    "glossary.md",
+    "architecture.md",
+)
 
 
 def validate_pages(pages: dict[str, str]) -> list[str]:
     """Return a list of missing required page paths. Empty list = valid."""
     return sorted(REQUIRED_PATHS - pages.keys())
+
+
+# ---------- Runtime kind discovery (frontmatter is authoritative) ----------
+
+
+def kinds_from_pages(pages: dict[str, str]) -> dict[str, PageKind]:
+    """Read each page's frontmatter `kind` field; default to 'stable' when
+    the page lacks frontmatter or has an unknown kind."""
+    out: dict[str, PageKind] = {}
+    for path, md in pages.items():
+        fm, _ = parse_frontmatter(md)
+        raw = str(fm.get("kind") or "").lower()
+        if raw in ("stable", "dynamic", "hidden", "report"):
+            out[path] = raw  # type: ignore[assignment]
+        else:
+            out[path] = "stable"
+    return out
+
+
+def paths_with_kind(pages: dict[str, str], kind: PageKind) -> list[str]:
+    return [p for p, k in kinds_from_pages(pages).items() if k == kind]
+
+
+def stable_paths_in(pages: dict[str, str]) -> list[str]:
+    """Paths in `pages` whose frontmatter says they're stable (or hidden —
+    same preserve-on-incremental semantics). Authoritative for runtime."""
+    kinds = kinds_from_pages(pages)
+    return [p for p, k in kinds.items() if k in ("stable", "hidden")]
+
+
+def _kind_from_md(md: str) -> str:
+    fm, _ = parse_frontmatter(md)
+    return str(fm.get("kind") or "stable").lower()
 
 
 # ---------- Frontmatter ----------
@@ -147,18 +222,22 @@ class PageNode:
 def build_tree(pages: dict[str, str]) -> list[PageNode]:
     """Build a hierarchical tree from `{path: markdown}`. Root pages have no parent.
 
-    Pages in `SURFACE_PATHS` (e.g. `standup.md`) are excluded — they have their
-    own UI surface above the wiki, not a sidebar entry.
+    `kind: report` pages (e.g. `standup.md`) are excluded — they have their own
+    UI surface, not a sidebar entry. `kind: hidden` pages ARE included; the
+    frontend chooses whether to render them (cmd-shift-. style toggle).
     """
     nodes: dict[str, PageNode] = {}
     for path, md in pages.items():
+        fm_kind = _kind_from_md(md)
+        if fm_kind == "report":
+            continue
         if path in SURFACE_PATHS:
             continue
         fm, _ = parse_frontmatter(md)
         spec = SPEC_BY_PATH.get(path)
         title = str(fm.get("title") or (spec.title if spec else _path_to_title(path)))
         kind: PageKind = (
-            fm.get("kind") if fm.get("kind") in ("stable", "dynamic")  # type: ignore[assignment]
+            fm.get("kind") if fm.get("kind") in ("stable", "dynamic", "hidden", "report")  # type: ignore[assignment]
             else (spec.kind if spec else "stable")
         )
         raw_order = fm.get("order")

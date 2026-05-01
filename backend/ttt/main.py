@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from ttt.api import chat, projects, reports
+from ttt.api import chat, projects, reports, workspace
 from ttt.db import init_db
 from ttt.reports.repo import init_store
 
@@ -27,6 +27,7 @@ app.add_middleware(
 app.include_router(projects.router, prefix="/api")
 app.include_router(reports.router, prefix="/api")
 app.include_router(chat.router, prefix="/api")
+app.include_router(workspace.router, prefix="/api")
 
 
 @app.get("/api/health")

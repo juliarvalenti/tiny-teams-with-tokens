@@ -104,7 +104,7 @@ export function KindBadge({
       <TooltipTrigger asChild>
         <Badge
           variant="outline"
-          className={`cursor-help font-medium uppercase tracking-wide ${sizing} ${spec.badgeClass}`}
+          className={`font-medium uppercase tracking-wide ${sizing} ${spec.badgeClass}`}
         >
           <Icon className={`${iconSize} ${spec.iconClass}`} />
           <span>{spec.label}</span>

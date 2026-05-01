@@ -100,7 +100,7 @@ async def test_incremental_preserves_stable_pages(isolated_data):
 
         v2_pages = report_repo.list_pages(project.id)
         assert marker in v2_pages["overview.md"], "stable page edit was clobbered by reingest"
-        for path in schema.dynamic_paths():
+        for path in schema.default_dynamic_paths():
             assert path in v2_pages
 
         # History viewer prerequisite: overview.md should have at least 2 revisions
@@ -108,3 +108,77 @@ async def test_incremental_preserves_stable_pages(isolated_data):
         history = report_repo.page_history(project.id, "overview.md")
         assert len(history) >= 2
         assert any(r.author == "test" for r in history)
+
+
+@pytest.mark.asyncio
+async def test_custom_stable_page_preserved_across_reingest(isolated_data):
+    """Frontmatter is authoritative — a user-created page with kind: stable
+    that's NOT in DEFAULT_PAGES must survive a reingest unchanged."""
+    engine = isolated_data
+    with Session(engine) as session:
+        project = Project(name="acme", charter="")
+        session.add(project)
+        session.commit()
+        session.refresh(project)
+        run1 = IngestRun(project_id=project.id, status="pending")
+        project.locked = True
+        session.add_all([run1, project])
+        session.commit()
+        session.refresh(run1)
+        await run_ingest(session, project, run=run1)
+
+        custom_md = (
+            "---\ntitle: Roadmap\nkind: stable\norder: 5\n---\n"
+            "# Roadmap\n\nQ3 milestones go here.\n"
+        )
+        report_repo.write_page(
+            project.id, "roadmap.md", custom_md,
+            message="user creates custom stable page", author="test",
+        )
+
+        run2 = IngestRun(project_id=project.id, status="pending")
+        project.locked = True
+        session.add_all([run2, project])
+        session.commit()
+        session.refresh(run2)
+        await run_ingest(session, project, run=run2)
+
+        v2_pages = report_repo.list_pages(project.id)
+        assert "roadmap.md" in v2_pages, "custom stable page disappeared on reingest"
+        assert "Q3 milestones go here" in v2_pages["roadmap.md"], "custom stable page content was rewritten"
+
+
+@pytest.mark.asyncio
+async def test_kind_flip_lets_dynamic_be_rewritten(isolated_data):
+    """A page that the user flips from stable→dynamic should be rewritten on
+    the next ingest. Static path's named-dynamic synthesizers don't write
+    arbitrary paths — assert through the schema helpers instead, which is the
+    authoritative source the agent path uses."""
+    engine = isolated_data
+    with Session(engine) as session:
+        project = Project(name="acme", charter="")
+        session.add(project)
+        session.commit()
+        session.refresh(project)
+        run = IngestRun(project_id=project.id, status="pending")
+        project.locked = True
+        session.add_all([run, project])
+        session.commit()
+        session.refresh(run)
+        await run_ingest(session, project, run=run)
+
+        # Flip overview.md from stable → dynamic by rewriting its frontmatter.
+        v1 = report_repo.list_pages(project.id)
+        fm, body = schema.parse_frontmatter(v1["overview.md"])
+        fm["kind"] = "dynamic"
+        flipped = schema.serialize_frontmatter(fm, body)
+        report_repo.write_page(
+            project.id, "overview.md", flipped,
+            message="user flips kind", author="test",
+        )
+
+        v1_after_flip = report_repo.list_pages(project.id)
+        # overview.md now reports kind=dynamic at runtime.
+        assert schema.kinds_from_pages(v1_after_flip)["overview.md"] == "dynamic"
+        # ...so it's NOT in the preserve list.
+        assert "overview.md" not in schema.stable_paths_in(v1_after_flip)

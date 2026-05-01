@@ -70,6 +70,20 @@ export const api = {
     webex_channels?: string[];
   }) => req<ProjectSummary>("/api/projects", { method: "POST", body: JSON.stringify(body) }),
 
+  updateProject: (
+    id: string,
+    body: {
+      charter?: string;
+      repos?: string[];
+      confluence_roots?: string[];
+      webex_channels?: string[];
+    },
+  ) =>
+    req<ProjectSummary>(`/api/projects/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
   reingest: (projectId: string) =>
     req<{ run_id: string; status: string }>(
       `/api/projects/${projectId}/reingest`,
@@ -85,12 +99,36 @@ export const api = {
   createPage: (
     projectId: string,
     version: number,
-    body: { path: string; title: string; parent_path?: string },
+    body: {
+      path: string;
+      title: string;
+      parent_path?: string;
+      kind?: "stable" | "dynamic" | "hidden";
+    },
   ) =>
-    req<{ path: string; title: string }>(
+    req<{ path: string; title: string; kind: string }>(
       `/api/projects/${projectId}/reports/${version}/pages`,
       { method: "POST", body: JSON.stringify(body) },
     ),
+
+  patchFrontmatter: (
+    projectId: string,
+    version: number,
+    pagePath: string,
+    body: { kind?: PageKind; title?: string; order?: number },
+  ) =>
+    req<{ path: string; frontmatter: Record<string, unknown> }>(
+      `/api/projects/${projectId}/reports/${version}/pages/${pagePath}/frontmatter`,
+      { method: "PATCH", body: JSON.stringify(body) },
+    ),
+
+  getRelationships: () => req<WorkspaceDoc>("/api/workspace/relationships"),
+
+  putRelationships: (doc: WorkspaceDoc) =>
+    req<WorkspaceDoc>("/api/workspace/relationships", {
+      method: "PUT",
+      body: JSON.stringify(doc),
+    }),
 
   resetChat: (projectId: string) =>
     req<{ ok: boolean }>(`/api/projects/${projectId}/chat/reset`, { method: "POST" }),
@@ -135,4 +173,29 @@ export type IngestRunDetail = {
   finished_at: string | null;
   error: string | null;
   log: string;
+};
+
+export type RelationshipKind =
+  | "depends_on"
+  | "blocks"
+  | "shares_team"
+  | "supersedes";
+
+export type WorkspaceGroup = {
+  id: string;
+  name: string;
+  description: string;
+  projects: string[];
+};
+
+export type WorkspaceRelationship = {
+  from: string;
+  to: string;
+  kind: RelationshipKind;
+  note: string;
+};
+
+export type WorkspaceDoc = {
+  groups: WorkspaceGroup[];
+  relationships: WorkspaceRelationship[];
 };

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
+import { useMemo, useState } from "react";
 import type { PageNode } from "@/lib/api";
 import { KindBadge } from "./KindBadge";
 
@@ -24,6 +25,37 @@ export function WikiSidebar({
   onCreatePage: (parentPath: string | null) => void;
   disabled?: boolean;
 }) {
+  const [showHidden, setShowHidden] = useState(false);
+
+  // Count hidden nodes anywhere in the tree (for the toggle label) and
+  // produce a hierarchy-preserving copy with hidden nodes pruned out (used
+  // when the toggle is off). When the toggle is on, the original tree is
+  // rendered as-is so hidden items appear in their natural position.
+  const { renderedTree, hiddenCount } = useMemo(() => {
+    let count = 0;
+    const countHidden = (nodes: PageNode[]) => {
+      for (const n of nodes) {
+        if (n.kind === "hidden") count += 1;
+        countHidden(n.children);
+      }
+    };
+    countHidden(tree);
+
+    const pruneHidden = (nodes: PageNode[]): PageNode[] => {
+      const out: PageNode[] = [];
+      for (const n of nodes) {
+        if (n.kind === "hidden") continue;
+        out.push({ ...n, children: pruneHidden(n.children) });
+      }
+      return out;
+    };
+
+    return {
+      renderedTree: showHidden ? tree : pruneHidden(tree),
+      hiddenCount: count,
+    };
+  }, [tree, showHidden]);
+
   return (
     <nav className="text-sm">
       {reports.length > 0 && (
@@ -70,7 +102,7 @@ export function WikiSidebar({
         </button>
       </div>
       <ul className="space-y-0.5">
-        {tree.map((node) => (
+        {renderedTree.map((node) => (
           <Branch
             key={node.path}
             node={node}
@@ -83,6 +115,18 @@ export function WikiSidebar({
         ))}
       </ul>
 
+      <div className="mt-3 border-t border-neutral-200 pt-3 dark:border-neutral-800">
+        <button
+          onClick={() => setShowHidden((v) => !v)}
+          className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+          title={showHidden ? "Hide hidden pages" : "Show hidden pages"}
+        >
+          {showHidden ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+          <span className="uppercase tracking-wide">
+            {showHidden ? "Hide" : "Show"} hidden ({hiddenCount})
+          </span>
+        </button>
+      </div>
     </nav>
   );
 }

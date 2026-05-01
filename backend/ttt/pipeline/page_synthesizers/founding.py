@@ -88,7 +88,7 @@ def _split_pages(raw: str, inputs: PageInputs) -> dict[str, str]:
         pages[name] = body
 
     # Ensure all four expected stable pages exist; fill missing with stub.
-    expected = report_schema.stable_paths()
+    expected = list(report_schema.FOUNDING_PATHS)
     if not all(p in pages for p in expected):
         stub = _split_pages(_stub_response(inputs), inputs) if raw is not _stub_response(inputs) else {}
         for p in expected:

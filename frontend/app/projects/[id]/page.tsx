@@ -2,7 +2,9 @@
 
 import { use, useEffect, useMemo, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
+import { Pencil } from "lucide-react";
 import { ChatPanel } from "@/components/ChatPanel";
+import { EditProjectModal } from "@/components/EditProjectModal";
 import { IngestHistoryPanel } from "@/components/IngestHistoryPanel";
 import { IngestLogStream } from "@/components/IngestLogStream";
 import { ReingestButton } from "@/components/ReingestButton";
@@ -45,13 +47,13 @@ export default function ProjectDetailPage({
   const [activePath, setActivePath] = useState<string | null>(null);
   const [createUnder, setCreateUnder] = useState<string | null | undefined>(undefined);
   const [showIngestHistory, setShowIngestHistory] = useState(false);
+  const [showEditProject, setShowEditProject] = useState(false);
 
-  // Default to overview.md when the tree first loads.
+  // Default to The Standup (first report) when the tree first loads — it's
+  // the highest-signal surface for cross-functional readers.
   useEffect(() => {
     if (activePath || !report.data) return;
-    const flat = flattenTree(report.data.page_tree);
-    const overview = flat.find((n) => n.path === "overview.md") ?? flat[0];
-    if (overview) setActivePath(overview.path);
+    setActivePath("standup.md");
   }, [report.data, activePath]);
 
   const flatNodes = useMemo(
@@ -77,12 +79,22 @@ export default function ProjectDetailPage({
     <main>
       <div className="grid gap-6 lg:grid-cols-[200px_1fr_360px]">
         <aside className="lg:sticky lg:top-6 self-start">
-          <h1
-            className="mb-3 flex h-8 items-center truncate text-2xl font-semibold leading-none"
-            title={data.name}
-          >
-            {data.name}
-          </h1>
+          <div className="group/title mb-3 flex h-8 items-center gap-1.5">
+            <h1
+              className="truncate text-2xl font-semibold leading-none"
+              title={data.name}
+            >
+              {data.name}
+            </h1>
+            <button
+              onClick={() => setShowEditProject(true)}
+              className="rounded p-1 text-neutral-400 opacity-0 hover:bg-neutral-100 hover:text-neutral-700 group-hover/title:opacity-100 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+              title="Edit project"
+              aria-label="Edit project"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+          </div>
           {report.data ? (
             <WikiSidebar
               reports={[{ path: "standup.md", title: "The Standup" }]}
@@ -152,6 +164,13 @@ export default function ProjectDetailPage({
         />
       )}
 
+      {showEditProject && (
+        <EditProjectModal
+          project={data}
+          onClose={() => setShowEditProject(false)}
+        />
+      )}
+
       {createUnder !== undefined && version != null && (
         <NewPageModal
           projectId={id}
@@ -193,6 +212,7 @@ function NewPageModal({
   onCreated: (path: string) => void;
 }) {
   const [title, setTitle] = useState("");
+  const [kind, setKind] = useState<"stable" | "dynamic" | "hidden">("stable");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -211,6 +231,7 @@ function NewPageModal({
         path: `${slug}.md`,
         title: title.trim(),
         parent_path: parentPath ?? undefined,
+        kind,
       });
       onCreated(result.path);
     } catch (err) {
@@ -233,19 +254,20 @@ function NewPageModal({
                 </>
               ) : (
                 <>Will be created at the top level.</>
-              )}{" "}
-              New pages are <span className="font-medium">stable</span> — they're
-              yours; ingest won't rewrite them.
+              )}
             </DialogDescription>
           </DialogHeader>
-          <input
-            autoFocus
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Page title (e.g. Roadmap)"
-            className="my-4 w-full rounded border border-neutral-300 bg-white px-3 py-2 dark:border-neutral-700 dark:bg-neutral-900"
-            required
-          />
+          <div className="my-4 grid gap-3">
+            <input
+              autoFocus
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Page title (e.g. Roadmap)"
+              className="w-full rounded border border-neutral-300 bg-white px-3 py-2 dark:border-neutral-700 dark:bg-neutral-900"
+              required
+            />
+            <KindToggle value={kind} onChange={setKind} />
+          </div>
           {error && (
             <div className="mb-3 rounded border border-red-300 bg-red-50 p-2 text-sm text-red-900 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300">
               {error}
@@ -267,5 +289,43 @@ function NewPageModal({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function KindToggle({
+  value,
+  onChange,
+}: {
+  value: "stable" | "dynamic" | "hidden";
+  onChange: (v: "stable" | "dynamic" | "hidden") => void;
+}) {
+  const opts: { key: "stable" | "dynamic" | "hidden"; label: string; hint: string }[] = [
+    { key: "stable", label: "Stable", hint: "human-curated, preserved across ingests" },
+    { key: "dynamic", label: "Dynamic", hint: "agent rewrites it on every ingest" },
+    { key: "hidden", label: "Hidden", hint: "agent-only memory, not shown in sidebar" },
+  ];
+  return (
+    <div>
+      <div className="mb-1.5 text-sm font-medium">Kind</div>
+      <div className="grid grid-cols-3 gap-1 rounded-md border border-neutral-200 bg-neutral-50 p-1 dark:border-neutral-800 dark:bg-neutral-900">
+        {opts.map((o) => (
+          <button
+            key={o.key}
+            type="button"
+            onClick={() => onChange(o.key)}
+            className={`rounded px-3 py-1.5 text-xs font-medium transition ${
+              value === o.key
+                ? "bg-white text-neutral-900 shadow-sm dark:bg-neutral-800 dark:text-neutral-100"
+                : "text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100"
+            }`}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+      <p className="mt-1.5 text-xs text-neutral-500">
+        {opts.find((o) => o.key === value)?.hint}
+      </p>
+    </div>
   );
 }

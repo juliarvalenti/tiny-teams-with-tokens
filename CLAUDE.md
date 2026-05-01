@@ -4,20 +4,39 @@ Instructions for Claude Code (and other coding agents) working on this repo. Rea
 
 ## TL;DR
 
-`tiny-teams-with-tokens` is a status-wiki-per-project tool. Reports are *trees of markdown pages* in a git repo, not single docs. Each page is either:
+`tiny-teams-with-tokens` is a status-wiki-per-project tool. Each project's wiki is a tree of markdown pages stored in sqlite, displayed via a Next.js UI, with two AI surfaces operating on it:
 
-- **stable** — written on greenfield ingest, preserved across reingests, human-curated (the project's anchor: purpose, goals, glossary, architecture)
-- **dynamic** — rewritten every ingest, grounded by the stable pages (status, activity, conversations)
+- **Ingest agent** — runs on demand (Reingest button); uses GitHub MCP + wiki tools to write/update pages.
+- **Chat agent** — interactive side panel; same tool surface, ad-hoc questions and edits.
 
-The stable/dynamic split is the core architectural decision. Don't undo it without reading PLAN.md §6.
+Both agents share `pipeline/agent_core.py`. Only the system prompt and seed message differ.
+
+## Page kinds (frontmatter is authoritative)
+
+Each page's YAML frontmatter declares its `kind`:
+
+- **stable** — pinned by the user; agents preserve it across ingests.
+- **dynamic** — agents rewrite it on every ingest, grounded by stable pages.
+- **report** — special-rendered surface (currently just `standup.md`); rewritten every ingest, hidden from the wiki sidebar.
+- **hidden** — agent-only memory (e.g. `memory.md`); read by the agents, hidden from the wiki sidebar by default (toggle to reveal).
+
+**All seed pages currently default to `dynamic` on greenfield.** Users can pin a page as `stable` post-hoc via the kind toggle in the page header. The legacy "stable on greenfield only" semantics is gone — frontmatter is the runtime source of truth, not paths.
 
 ## Stack
 
-- **Backend**: Python 3.12, FastAPI, SQLModel + SQLite, `anthropic` SDK (Messages API).
-- **Frontend**: Next.js 15 + React 19 + Tailwind + SWR + Milkdown Crepe (markdown WYSIWYG, markdown is the model).
-- **Storage**: SQLite for everything. Page content lives in the `pagerevision` table (one row per save, latest-by-`created_at` is the current page). A filesystem cache at `data/wiki/<project_id>/` mirrors the current state so the chat agent's Read/Edit/Write tools operate on real files; sqlite is authoritative.
+- **Backend**: Python 3.12, FastAPI, SQLModel + SQLite, `claude-agent-sdk` for the agents, `anthropic` SDK for the static fan-out fallback.
+- **Frontend**: Next.js 15 + React 19 + Tailwind + SWR + Milkdown Crepe (markdown WYSIWYG, markdown is the model) + shadcn/ui (Tooltip, Dialog, Sheet, Popover, Button, Badge, ToggleGroup).
+- **Storage**: SQLite for everything. Page content lives in the `pagerevision` table (one row per save, latest-by-`created_at` is the current page). A filesystem cache at `data/wiki/<project_id>/` mirrors the current state so the agents' Read/Edit/Write tools operate on real files; sqlite is authoritative.
+- **GitHub access**: in-process MCP server (`pipeline/mcp_github.py`) wrapping our existing httpx-based GitHub connector. Both agents see it as `mcp__github__*` tools.
 - **Package management**: `uv` for Python, `npm ci` for frontend. Versions pinned, `save-exact=true` in `frontend/.npmrc`.
-- **LLM**: Haiku for everything in PoC (~7 calls per ingest, pennies). Configurable in `backend/ttt/config.py`.
+- **LLM**: ingest uses Haiku (cost-conscious); chat uses Sonnet (better tool-use reasoning). Configurable in `backend/ttt/pipeline/agent_ingestor.py` and `backend/ttt/chat/agent.py`.
+
+## Ingest paths
+
+There are two backends for the Reingest button, gated by `INGEST_MODE`:
+
+- `INGEST_MODE=agent` (active path) — the Claude Agent SDK loop in `pipeline/agent_ingestor.py`. The agent reads the wiki, calls GitHub MCP tools, writes pages directly. Frontmatter is the source of truth for which pages to preserve / rewrite.
+- `INGEST_MODE=static` (default for tests, fallback) — the legacy fan-out in `pipeline/runner.py` (extractors + page synthesizers). Kept around for stub-mode tests and as a safety net. Will likely be removed once we trust the agent path.
 
 ## Common commands
 
@@ -25,13 +44,16 @@ The stable/dynamic split is the core architectural decision. Don't undo it witho
 # Backend
 uv sync --group dev                                       # install
 uv run pytest -x -q                                       # tests (forced stub mode, no API calls)
-uv run ttt init-data                                      # create local sqlite + git report repo
-uv run uvicorn ttt.main:app --port 8765                   # dev server
+uv run ttt init-data                                      # create local sqlite + data/wiki/
 
-# Frontend
+# Dev server (hot reload)
+INGEST_MODE=agent uv run uvicorn ttt.main:app --port 8765 \
+    --reload --reload-dir backend/ttt
+
+# Frontend (hot reload by default)
 cd frontend && npm ci                                     # install
 cd frontend && npm run dev -- -p 3001                     # dev server
-cd frontend && npm run build                              # production build (only for docker prod path)
+cd frontend && npm run build                              # production build (Docker prod path)
 
 # Docker
 docker compose up --build                                 # backend + frontend, persistent volume
@@ -45,12 +67,14 @@ uv run ruff format .
 
 In this order:
 
-1. `backend/ttt/pipeline/runner.py` — the orchestrator. Spine of the project.
-2. `backend/ttt/reports/schema.py` — page kinds, frontmatter, validation, sidebar tree.
-3. `backend/ttt/pipeline/page_synthesizers/founding.py` — what the anchor *is*.
-4. `backend/ttt/pipeline/page_synthesizers/status.py` — example dynamic page synthesizer.
-5. `backend/ttt/pipeline/connectors/github.py` — the only real connector. Copy this shape for Confluence/Webex.
-6. `frontend/app/projects/[id]/page.tsx` — the wiki UI.
+1. `backend/ttt/pipeline/agent_core.py` — the shared agent factory + persist hook. Spine of both agent surfaces.
+2. `backend/ttt/pipeline/agent_ingestor.py` — the ingest agent: system prompt, log streaming, Report row creation.
+3. `backend/ttt/chat/agent.py` — the chat agent: system prompt, SSE event translation.
+4. `backend/ttt/pipeline/mcp_github.py` — in-process GitHub MCP. `@tool` decorators wrap our httpx connector.
+5. `backend/ttt/reports/schema.py` — page kinds, frontmatter, runtime kind discovery (`kinds_from_pages`, `stable_paths_in`).
+6. `backend/ttt/reports/repo.py` — sqlite-backed page store. `write_page` is the single write path; FS cache is mirrored automatically.
+7. `backend/ttt/pipeline/runner.py` — the static fan-out fallback. Read after the agent path so you know what the agent path replaced.
+8. `frontend/app/projects/[id]/page.tsx` — the wiki UI: 3-col layout, sidebar / editor / chat. Spawns `IngestLogStream` while locked.
 
 ## Conventions worth respecting
 
@@ -60,21 +84,24 @@ In this order:
 - **No comments unless they explain WHY** something non-obvious is being done. Don't restate what the code does.
 - **No emojis** in code or commit messages.
 - **No README/docs files** unless explicitly requested. (`PLAN.md` and this file are explicit asks.)
-- **Frontend**: client components for anything that mounts editors / uses SWR. App Router, no Pages Router.
+- **Frontend**: client components for anything that mounts editors / uses SWR. App Router, no Pages Router. shadcn primitives wrapped in domain components (e.g. `KindBadge` wraps `Badge` + `Tooltip`).
 
 ### Pipeline / agents
 
-- Stub fallbacks everywhere. Every synthesizer/extractor checks `anthropic_client.is_available()` and falls through to a deterministic stub if no key. Tests force `ANTHROPIC_API_KEY=""` to use stubs.
-- **Connectors are independently failable.** A failed connector becomes `_(source: skipped (...) )_` in the deltas. Never abort the whole ingest because one source died.
-- **Citations are required on dynamic pages.** Stable pages don't carry citations.
+- **Frontmatter is authoritative.** When deciding "preserve or rewrite this page," read the file's `kind` frontmatter — never trust the path. `kinds_from_pages()` and `stable_paths_in()` are the runtime helpers; `default_*_paths()` are *seed-only* and should not be used for runtime decisions.
+- **Both agents share `agent_core.build_agent_options()`.** Differences between chat and ingest are: system prompt, model, max_turns, persistence target (chat = untagged revisions, ingest = revisions tagged with `report_id`). Add new tools to `agent_core` so both surfaces get them.
+- **Stub fallbacks everywhere in the static path.** Every synthesizer/extractor checks `anthropic_client.is_available()` and falls through to a deterministic stub if no key. Tests force `ANTHROPIC_API_KEY=""` to use stubs.
+- **Connectors are independently failable** (in the static path). A failed connector becomes `_(source: skipped (...))_` in the deltas. Never abort the whole ingest because one source died.
 - **Synthesizer prompts must enforce "no preamble, output markdown only".** Every prompt currently does. Don't break this.
-- **Stable pages are written ONLY on greenfield ingest.** Incremental ingest reads existing stable pages from prior commit, preserves them as-is. If you find yourself adding code that rewrites stable pages on incremental, you're probably wrong; check PLAN.md §6.2.
+- **Don't add propose-diff / human-in-the-loop review machinery.** Auto-accept everywhere. PLAN.md §6.2.
+- **No RAG-style status pills, sentiment, or health scores.** PLAN.md §6.8 — explicit design stance.
 
-### Git / storage
+### Storage
 
-- `data/` is gitignored — both the SQLite DB and the bare report repo are runtime artifacts.
-- Each ingest produces ONE git commit on the report repo. Each human edit produces ONE commit. So `git log` is the audit trail.
-- Use `--allow-empty` on commits — identical-content ingests still produce a versioned commit (we want the version bump).
+- `data/` is gitignored — sqlite DB and the wiki cache are runtime artifacts.
+- The filesystem at `data/wiki/<project_id>/` is a regenerable mirror of sqlite (`report_repo.sync_to_disk(project_id)`). Don't write to it directly outside the persist hook.
+- `IngestRun.log` stores the Docker-style live log line-by-line. Frontend polls `/api/ingest/{run_id}` while locked and renders it in `IngestLogStream`.
+- Past ingests are auditable via the "Logs" button next to Reingest — `IngestHistoryPanel` lists every `IngestRun` with its full log.
 
 ### Secrets
 
@@ -83,20 +110,23 @@ In this order:
 
 ## What to build next
 
-See [`PLAN.md`](./PLAN.md) §8. Top of the list right now:
+See [`PLAN.md`](./PLAN.md) §8 and the open GitHub issues. Top of the list right now:
 
-1. **In-app chat** with project-scoped tool use (read wiki + live GH/Confluence/Webex). Highest leverage — turns the wiki from one-way reading into queryable.
-2. **Real Confluence connector** (M6) — blocked on creds.
-3. **Real Webex connector** (M7) — blocked on personal token + channel access.
-4. **MCP server** — exposing the wiki to other Claude Code sessions.
+1. **Real Confluence connector** (M6) — blocked on creds.
+2. **Real Webex connector** (M7) — blocked on personal token + channel access.
+3. **Project interrelations + groups** (#9) → new home page (#3).
+4. **Onboarding validation** (#14) — validate gh repos / confluence / webex during create.
+5. **MCP server** exposing the wiki to other Claude Code sessions (M8).
 
 If you (the agent) are picking this up cold, follow the "How to pick this up cold" checklist at the bottom of PLAN.md.
 
 ## Don't
 
 - Don't reintroduce git-backed page storage. We migrated to a `pagerevision` table — audit is `SELECT … ORDER BY created_at DESC` per page. The `data/wiki/` filesystem is a regenerable cache.
-- Don't collapse the stable/dynamic split. PLAN.md §6.1 explains why.
+- Don't add a separate "stable runtime list" hardcoded by path. The four page kinds are declared in frontmatter; runtime decisions go through `schema.kinds_from_pages()` / `stable_paths_in()`.
 - Don't add propose-diff / human-in-the-loop review machinery. PLAN.md §6.2 — auto-accept everywhere is a deliberate choice.
 - Don't introduce a workflow framework (Airflow/Prefect/Celery). PLAN.md §6.7.
 - Don't swap Crepe for Tiptap/BlockNote/Lexical-with-markdown-plugin. They lose markdown fidelity. PLAN.md §6.5.
+- Don't add RAG status pills / sentiment indicators / health scores. PLAN.md §6.8.
 - Don't write into `.env` as a tool call. If you need an API key, ask the user to add it themselves.
+- Don't fork the agent surface — chat and ingest stay 99% the same. New tools / capabilities go in `agent_core`, not in one path or the other.
