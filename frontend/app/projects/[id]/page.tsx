@@ -3,6 +3,8 @@
 import { use, useEffect, useMemo, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { ChatPanel } from "@/components/ChatPanel";
+import { IngestHistoryPanel } from "@/components/IngestHistoryPanel";
+import { IngestLogStream } from "@/components/IngestLogStream";
 import { ReingestButton } from "@/components/ReingestButton";
 import { ReportEditor } from "@/components/ReportEditor";
 import { StandupCard } from "@/components/StandupCard";
@@ -42,6 +44,7 @@ export default function ProjectDetailPage({
 
   const [activePath, setActivePath] = useState<string | null>(null);
   const [createUnder, setCreateUnder] = useState<string | null | undefined>(undefined);
+  const [showIngestHistory, setShowIngestHistory] = useState(false);
 
   // Default to overview.md when the tree first loads.
   useEffect(() => {
@@ -74,7 +77,10 @@ export default function ProjectDetailPage({
     <main>
       <div className="grid gap-6 lg:grid-cols-[200px_1fr_360px]">
         <aside className="lg:sticky lg:top-6 self-start">
-          <h1 className="mb-4 truncate text-2xl font-semibold" title={data.name}>
+          <h1
+            className="mb-3 flex h-8 items-center truncate text-2xl font-semibold leading-none"
+            title={data.name}
+          >
             {data.name}
           </h1>
           {report.data ? (
@@ -94,7 +100,9 @@ export default function ProjectDetailPage({
         </aside>
 
         <section>
-          {version != null && activePath === "standup.md" ? (
+          {data.locked ? (
+            <IngestLogStream runId={data.latest_run_id} />
+          ) : version != null && activePath === "standup.md" ? (
             <StandupCard projectId={id} version={version} locked={data.locked} />
           ) : version != null && activeNode ? (
             <ReportEditor
@@ -107,9 +115,7 @@ export default function ProjectDetailPage({
             />
           ) : version == null ? (
             <p className="text-sm text-neutral-500">
-              {data.locked
-                ? "Generating first wiki…"
-                : "No report yet — click Reingest to generate one."}
+              No report yet — click Reingest to generate one.
             </p>
           ) : (
             <p className="text-sm text-neutral-500">Pick a page from the sidebar.</p>
@@ -117,7 +123,7 @@ export default function ProjectDetailPage({
         </section>
 
         <aside className="lg:sticky lg:top-6 self-start">
-          <div className="mb-4 flex h-8 items-center justify-end gap-3">
+          <div className="mb-3 flex h-8 items-center justify-end gap-3">
             {data.locked ? (
               <span className="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
                 ingest in progress…
@@ -125,11 +131,26 @@ export default function ProjectDetailPage({
             ) : (
               <span className="text-xs text-neutral-500">v{data.latest_version ?? "—"}</span>
             )}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setShowIngestHistory(true)}
+              title="View past ingest logs"
+            >
+              Logs
+            </Button>
             <ReingestButton projectId={id} disabled={data.locked} />
           </div>
           <ChatPanel projectId={id} reportKey={reportKey} version={version} />
         </aside>
       </div>
+
+      {showIngestHistory && (
+        <IngestHistoryPanel
+          projectId={id}
+          onClose={() => setShowIngestHistory(false)}
+        />
+      )}
 
       {createUnder !== undefined && version != null && (
         <NewPageModal

@@ -13,6 +13,7 @@ export type ProjectDetail = ProjectSummary & {
   confluence_roots: string[];
   webex_channels: string[];
   ingest_config: Record<string, unknown>;
+  latest_run_id: string | null;
 };
 
 const BASE = ""; // proxied via next.config.js rewrites
@@ -116,4 +117,22 @@ export type RevisionDetail = RevisionSummary & {
   markdown: string;
   body: string;
   frontmatter: Record<string, unknown>;
+};
+
+export type IngestRunSummary = {
+  id: string;
+  status: "pending" | "running" | "success" | "failed";
+  started_at: string;
+  finished_at: string | null;
+  error: string | null;
+  log_lines: number;
+};
+
+export type IngestRunDetail = {
+  id: string;
+  status: "pending" | "running" | "success" | "failed";
+  started_at: string;
+  finished_at: string | null;
+  error: string | null;
+  log: string;
 };

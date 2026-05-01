@@ -64,7 +64,8 @@ export function HistoryPanel({
     <Sheet open onOpenChange={(o) => !o && onClose()}>
       <SheetContent
         side="right"
-        className="flex w-full max-w-[min(1600px,95vw)] flex-col gap-0 p-0 sm:max-w-[min(1600px,95vw)]"
+        style={{ width: "95vw", maxWidth: "min(1600px, 95vw)" }}
+        className="flex flex-col gap-0 p-0"
       >
         <SheetHeader className="border-b border-neutral-200 px-5 py-3 dark:border-neutral-800">
           <SheetTitle>History</SheetTitle>

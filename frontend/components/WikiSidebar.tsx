@@ -40,14 +40,14 @@ export function WikiSidebar({
                 <li key={r.path}>
                   <button
                     onClick={() => onSelect(r.path)}
-                    className={`flex w-full items-center justify-between gap-2 rounded px-2 py-1 text-left ${
+                    className={`flex w-full items-center gap-2 rounded px-2 py-1 text-left ${
                       isActive
                         ? "bg-neutral-200 dark:bg-neutral-800"
                         : "hover:bg-neutral-100 dark:hover:bg-neutral-900"
                     }`}
                   >
+                    <KindBadge kind="report" iconOnly />
                     <span className="truncate">{r.title}</span>
-                    <KindBadge kind="report" size="xs" />
                   </button>
                 </li>
               );
@@ -118,10 +118,10 @@ function Branch({
       >
         <button
           onClick={() => onSelect(node.path)}
-          className="flex flex-1 items-center gap-1.5 text-left"
+          className="flex flex-1 items-center gap-2 text-left"
         >
+          <KindBadge kind={node.kind} iconOnly />
           <span className="truncate">{node.title}</span>
-          <KindBadge kind={node.kind} size="xs" />
         </button>
         <button
           onClick={() => onCreatePage(node.path)}

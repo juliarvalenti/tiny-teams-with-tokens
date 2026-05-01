@@ -93,9 +93,22 @@ def get_project(project_id: UUID, session: Session = Depends(get_session)) -> di
     if not project:
         raise HTTPException(404, "project not found")
     summary = _summarize(session, project)
-    return {**summary.model_dump(), "charter": project.charter, "repos": project.repos,
-            "confluence_roots": project.confluence_roots, "webex_channels": project.webex_channels,
-            "ingest_config": project.ingest_config}
+    # Newest IngestRun for this project — UI uses this to stream the running
+    # agent's log into the "ingest in progress" surface.
+    latest_run = session.exec(
+        select(IngestRun)
+        .where(IngestRun.project_id == project_id)
+        .order_by(IngestRun.started_at.desc())
+    ).first()
+    return {
+        **summary.model_dump(),
+        "charter": project.charter,
+        "repos": project.repos,
+        "confluence_roots": project.confluence_roots,
+        "webex_channels": project.webex_channels,
+        "ingest_config": project.ingest_config,
+        "latest_run_id": str(latest_run.id) if latest_run else None,
+    }
 
 
 @router.patch("/projects/{project_id}", response_model=ProjectSummary)
@@ -122,6 +135,28 @@ async def reingest(project_id: UUID, session: Session = Depends(get_session)) ->
         raise HTTPException(404, "project not found")
     run = _start_ingest(session, project)
     return {"run_id": str(run.id), "status": run.status}
+
+
+@router.get("/projects/{project_id}/ingests")
+def list_ingests(
+    project_id: UUID, session: Session = Depends(get_session)
+) -> list[dict[str, Any]]:
+    runs = session.exec(
+        select(IngestRun)
+        .where(IngestRun.project_id == project_id)
+        .order_by(IngestRun.started_at.desc())
+    ).all()
+    return [
+        {
+            "id": str(r.id),
+            "status": r.status,
+            "started_at": r.started_at.isoformat(),
+            "finished_at": r.finished_at.isoformat() if r.finished_at else None,
+            "error": r.error,
+            "log_lines": (r.log or "").count("\n"),
+        }
+        for r in runs
+    ]
 
 
 @router.get("/ingest/{run_id}")

@@ -28,5 +28,11 @@ class Settings(BaseSettings):
     extractor_model: str = "claude-haiku-4-5"
     synthesizer_model: str = "claude-haiku-4-5"  # PoC: cheapest tier; bump to opus later for quality
 
+    # "static" = the original fan-out pipeline (extractors + page synthesizers).
+    # "agent"  = Claude Agent SDK loop with in-process GitHub MCP. Cheaper to
+    #           reason about, easier to extend (#13 backlinks, #8 team), but
+    #           less deterministic per ingest.
+    ingest_mode: str = "static"
+
 
 settings = Settings()
