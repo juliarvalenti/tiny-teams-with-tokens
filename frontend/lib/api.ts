@@ -93,4 +93,27 @@ export const api = {
 
   resetChat: (projectId: string) =>
     req<{ ok: boolean }>(`/api/projects/${projectId}/chat/reset`, { method: "POST" }),
+
+  pageHistory: (projectId: string, pagePath: string) =>
+    req<RevisionSummary[]>(
+      `/api/projects/${projectId}/pages/${pagePath}/history`,
+    ),
+
+  getRevision: (projectId: string, revisionId: string) =>
+    req<RevisionDetail>(`/api/projects/${projectId}/revisions/${revisionId}`),
+};
+
+export type RevisionSummary = {
+  id: string;
+  created_at: string;
+  author: string;
+  message: string;
+  report_id: string | null;
+};
+
+export type RevisionDetail = RevisionSummary & {
+  path: string;
+  markdown: string;
+  body: string;
+  frontmatter: Record<string, unknown>;
 };

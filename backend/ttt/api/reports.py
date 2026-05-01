@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from ttt.db import get_session
-from ttt.models import Project, Report
+from ttt.models import PageRevision, Project, Report
 from ttt.reports import repo as report_repo
 from ttt.reports import schema as report_schema
 
@@ -129,6 +129,52 @@ def put_page(
         author=body.author,
     )
     return {"path": page_path}
+
+
+@router.get("/projects/{project_id}/pages/{page_path:path}/history")
+def page_history(
+    project_id: UUID,
+    page_path: str,
+    session: Session = Depends(get_session),
+) -> list[dict[str, Any]]:
+    """List every revision of a page, newest first. Body content omitted —
+    fetch via /revisions/{id} when the user opens a diff."""
+    project = session.get(Project, project_id)
+    if not project:
+        raise HTTPException(404, "project not found")
+    revs = report_repo.page_history(project_id, page_path)
+    return [
+        {
+            "id": str(r.id),
+            "created_at": r.created_at.isoformat(),
+            "author": r.author,
+            "message": r.message,
+            "report_id": str(r.report_id) if r.report_id else None,
+        }
+        for r in revs
+    ]
+
+
+@router.get("/projects/{project_id}/revisions/{revision_id}")
+def get_revision(
+    project_id: UUID,
+    revision_id: UUID,
+    session: Session = Depends(get_session),
+) -> dict[str, Any]:
+    rev = session.get(PageRevision, revision_id)
+    if not rev or rev.project_id != project_id:
+        raise HTTPException(404, "revision not found")
+    fm, body = report_schema.parse_frontmatter(rev.markdown)
+    return {
+        "id": str(rev.id),
+        "path": rev.path,
+        "markdown": rev.markdown,
+        "body": body,
+        "frontmatter": fm,
+        "author": rev.author,
+        "message": rev.message,
+        "created_at": rev.created_at.isoformat(),
+    }
 
 
 @router.post("/projects/{project_id}/reports/{version}/pages")

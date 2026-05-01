@@ -14,6 +14,7 @@
     "@milkdown/react": "7.20.0",
     "next": "15.5.15",
     "react": "19.0.0",
+    "react-diff-viewer-continued": "4.2.2",
     "react-dom": "19.0.0",
     "swr": "2.3.0"
   },
