@@ -2,14 +2,22 @@
 
 import { useState } from "react";
 import type { PageNode } from "@/lib/api";
+import { KindBadge } from "./KindBadge";
+
+export type ReportLink = {
+  path: string;
+  title: string;
+};
 
 export function WikiSidebar({
+  reports,
   tree,
   activePath,
   onSelect,
   onCreatePage,
   disabled,
 }: {
+  reports: ReportLink[];
   tree: PageNode[];
   activePath: string | null;
   onSelect: (path: string) => void;
@@ -18,6 +26,36 @@ export function WikiSidebar({
 }) {
   return (
     <nav className="text-sm">
+      {reports.length > 0 && (
+        <>
+          <div className="mb-2">
+            <span className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+              Reports
+            </span>
+          </div>
+          <ul className="mb-5 space-y-0.5">
+            {reports.map((r) => {
+              const isActive = r.path === activePath;
+              return (
+                <li key={r.path}>
+                  <button
+                    onClick={() => onSelect(r.path)}
+                    className={`flex w-full items-center justify-between gap-2 rounded px-2 py-1 text-left ${
+                      isActive
+                        ? "bg-neutral-200 dark:bg-neutral-800"
+                        : "hover:bg-neutral-100 dark:hover:bg-neutral-900"
+                    }`}
+                  >
+                    <span className="truncate">{r.title}</span>
+                    <KindBadge kind="report" size="xs" />
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </>
+      )}
+
       <div className="mb-2 flex items-center justify-between">
         <span className="text-xs font-medium uppercase tracking-wide text-neutral-500">
           Pages
@@ -45,7 +83,6 @@ export function WikiSidebar({
         ))}
       </ul>
 
-      <KindLegend />
     </nav>
   );
 }
@@ -84,7 +121,7 @@ function Branch({
           className="flex flex-1 items-center gap-1.5 text-left"
         >
           <span className="truncate">{node.title}</span>
-          <KindBadge kind={node.kind} />
+          <KindBadge kind={node.kind} size="xs" />
         </button>
         <button
           onClick={() => onCreatePage(node.path)}
@@ -116,38 +153,3 @@ function Branch({
   );
 }
 
-function KindBadge({ kind }: { kind: PageNode["kind"] }) {
-  if (kind === "stable") {
-    return (
-      <span
-        title="Stable: human-curated. Reingest preserves your edits."
-        className="rounded bg-emerald-100 px-1 text-[10px] font-medium uppercase tracking-wide text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300"
-      >
-        stable
-      </span>
-    );
-  }
-  return (
-    <span
-      title="Dynamic: agent-rewritten on each reingest. Hand edits will be overwritten next ingest."
-      className="rounded bg-sky-100 px-1 text-[10px] font-medium uppercase tracking-wide text-sky-800 dark:bg-sky-900/40 dark:text-sky-300"
-    >
-      dynamic
-    </span>
-  );
-}
-
-function KindLegend() {
-  return (
-    <div className="mt-6 space-y-1 border-t border-neutral-200 pt-3 text-[11px] text-neutral-500 dark:border-neutral-800">
-      <div className="flex items-center gap-1.5">
-        <KindBadge kind="stable" />
-        <span>human-owned, preserved across ingests</span>
-      </div>
-      <div className="flex items-center gap-1.5">
-        <KindBadge kind="dynamic" />
-        <span>agent-rewritten each reingest</span>
-      </div>
-    </div>
-  );
-}

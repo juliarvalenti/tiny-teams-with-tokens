@@ -5,6 +5,8 @@ import useSWR from "swr";
 import { api, swrFetcher, type PageKind, type PageResponse } from "@/lib/api";
 import { CrepeEditor, type CrepeEditorHandle } from "./CrepeEditor";
 import { HistoryPanel } from "./HistoryPanel";
+import { KindBadge } from "./KindBadge";
+import { Button } from "@/components/ui/button";
 
 export function ReportEditor({
   projectId,
@@ -67,7 +69,7 @@ export function ReportEditor({
 
   const dynamicWarning =
     pageKind === "dynamic" && isEditing
-      ? "This page is auto-rewritten on each reingest — your edits will be overwritten next time."
+      ? "Heads up: the agent rewrites this page on every reingest. Your edits go in as context for the next rewrite, but they may not survive."
       : null;
 
   // Editor frame swaps to an amber outline while editing so the user can see
@@ -82,33 +84,27 @@ export function ReportEditor({
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <h2 className="text-lg font-semibold">{pageTitle}</h2>
-          <span
-            className={
-              pageKind === "stable"
-                ? "rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300"
-                : "rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-sky-800 dark:bg-sky-900/40 dark:text-sky-300"
-            }
-          >
-            {pageKind}
-          </span>
+          <KindBadge kind={pageKind} />
         </div>
         <div className="flex gap-2">
-          <button
+          <Button
+            size="sm"
+            variant="outline"
             onClick={() => setShowHistory(true)}
-            className="rounded border border-neutral-300 px-3 py-1 text-xs hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
             title="View revision history"
           >
             History
-          </button>
+          </Button>
           {!isEditing && (
-            <button
+            <Button
+              size="sm"
+              variant="outline"
               onClick={() => setIsEditing(true)}
               disabled={locked}
               title={locked ? "locked while ingest is running" : "Edit page"}
-              className="rounded border border-neutral-300 px-3 py-1 text-xs hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
             >
               Edit
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -136,25 +132,17 @@ export function ReportEditor({
       </div>
 
       {isEditing && (
-        <div className="sticky bottom-0 -mx-2 mt-2 flex items-center justify-between gap-3 rounded border border-amber-300 bg-amber-50/95 px-4 py-2 backdrop-blur dark:border-amber-900/60 dark:bg-amber-950/80">
-          <span className="text-xs text-amber-900 dark:text-amber-200">
+        <div className="sticky bottom-6 -mx-2 mt-4 flex items-center justify-between gap-4 rounded-lg border border-amber-300 bg-amber-50/95 px-5 py-3 shadow-lg backdrop-blur dark:border-amber-900/60 dark:bg-amber-950/85">
+          <span className="text-sm text-amber-900 dark:text-amber-200">
             Editing <span className="font-mono">{pagePath}</span> · changes are not saved until you click Save.
           </span>
           <div className="flex gap-2">
-            <button
-              onClick={onCancel}
-              disabled={saving}
-              className="rounded px-3 py-1 text-xs text-neutral-700 hover:bg-amber-100 disabled:opacity-50 dark:text-neutral-200 dark:hover:bg-amber-900/40"
-            >
+            <Button variant="ghost" onClick={onCancel} disabled={saving}>
               Cancel
-            </button>
-            <button
-              onClick={onSave}
-              disabled={saving || locked}
-              className="rounded bg-neutral-900 px-3 py-1 text-xs text-white disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900"
-            >
+            </Button>
+            <Button onClick={onSave} disabled={saving || locked}>
               {saving ? "Saving…" : "Save"}
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -163,7 +151,6 @@ export function ReportEditor({
         <HistoryPanel
           projectId={projectId}
           pagePath={pagePath}
-          currentBody={data.body}
           onClose={() => setShowHistory(false)}
         />
       )}

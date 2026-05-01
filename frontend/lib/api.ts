@@ -30,7 +30,7 @@ export async function req<T>(path: string, init?: RequestInit): Promise<T> {
 // SWR fetcher — pass URL as the SWR key.
 export const swrFetcher = <T>(path: string) => req<T>(path);
 
-export type PageKind = "stable" | "dynamic";
+export type PageKind = "stable" | "dynamic" | "hidden" | "report";
 
 export type PageNode = {
   path: string;

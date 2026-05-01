@@ -11,11 +11,10 @@ venv/
 .env
 .env.local
 
-# Data — local SQLite + report repo are dev artifacts
+# Data — local SQLite + filesystem cache are dev artifacts
 data/ttt.db
 data/ttt.db-journal
-data/reports.git/
-data/reports-wc/
+data/wiki/
 
 # Node
 node_modules/

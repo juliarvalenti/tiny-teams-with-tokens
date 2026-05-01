@@ -219,7 +219,15 @@ Bus factor: Saul-Mirone is the sole npm publisher. Pinning + lockfile + `npm ci`
 
 **Why:** The pipeline is 4-7 nodes with one fan-out. A workflow engine adds infra cost (database, scheduler, web UI, worker pool) for zero benefit at this scale. If we ever need scheduled ingest, retries-with-backoff, or fan-out across many projects, we revisit.
 
-### 6.8 Connectors are independently failable
+### 6.8 No RAG-style status pills, sentiment, or health scores
+
+**Decision:** no red/amber/green badges, no "health: 75%" gauges, no sentiment indicators anywhere in the product. We refuse to manufacture a single-character signal that summarizes a complex project state.
+
+**Why:** RAG status is enterprise theater. It compresses real information into a color, the color is wrong as often as it's right, and the moment a reader trusts the color they stop reading the prose underneath. Our entire bet is that *grounded, honest prose* is more useful than *vibes-coded summaries* — and a status pill is the densest possible vibes-coded summary. If a project is in trouble, the standup's "Asks / Blockers" section will say so in words, with citations. That's the signal; the color is noise.
+
+This applies broadly: avoid health scores, sentiment ratings, "on track / at risk / off track" buckets, ✅/⚠️/❌ icons in headers, and any other UI element whose job is to *replace* reading. We can revisit if cross-functional readers genuinely can't get the signal from prose, but the burden of proof is on the indicator, not against it.
+
+### 6.9 Connectors are independently failable
 
 **Decision:** if a connector fails, we surface `_(source: skipped (reason) )_` in the deltas and continue. Never abort the whole ingest.
 

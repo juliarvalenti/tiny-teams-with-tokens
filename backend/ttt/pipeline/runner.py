@@ -35,6 +35,7 @@ from ttt.pipeline.page_synthesizers import (
     write_activity,
     write_conversations,
     write_founding_pages,
+    write_standup,
     write_status,
 )
 from ttt.pipeline.page_synthesizers._common import PageInputs
@@ -172,6 +173,7 @@ async def run_ingest(
 
         async with asyncio.TaskGroup() as tg:
             dynamic_tasks = {
+                "standup.md": tg.create_task(write_standup(page_inputs("standup.md"))),
                 "status.md": tg.create_task(write_status(page_inputs("status.md"))),
                 "activity.md": tg.create_task(write_activity(page_inputs("activity.md"))),
                 "conversations.md": tg.create_task(write_conversations(page_inputs("conversations.md"))),

@@ -1,24 +1,28 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import useSWR from "swr";
 import ReactDiffViewer, { DiffMethod } from "react-diff-viewer-continued";
 import {
-  api,
   swrFetcher,
   type RevisionDetail,
   type RevisionSummary,
 } from "@/lib/api";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "@/components/ui/sheet";
 
 export function HistoryPanel({
   projectId,
   pagePath,
-  currentBody,
   onClose,
 }: {
   projectId: string;
   pagePath: string;
-  currentBody: string;
   onClose: () => void;
 }) {
   const historyKey = `/api/projects/${projectId}/pages/${pagePath}/history`;
@@ -27,29 +31,47 @@ export function HistoryPanel({
     swrFetcher,
   );
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const revKey = selectedId
-    ? `/api/projects/${projectId}/revisions/${selectedId}`
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+
+  // Default to the most recent revision so the panel isn't blank on open.
+  useEffect(() => {
+    if (selectedIndex == null && history && history.length > 0) {
+      setSelectedIndex(0);
+    }
+  }, [history, selectedIndex]);
+
+  const selected = selectedIndex != null ? history?.[selectedIndex] : null;
+  // The "previous" revision in the timeline is the *next* item in the list,
+  // since the list is ordered newest-first.
+  const previous =
+    selectedIndex != null && history ? history[selectedIndex + 1] : null;
+
+  const newKey = selected
+    ? `/api/projects/${projectId}/revisions/${selected.id}`
     : null;
-  const { data: revision } = useSWR<RevisionDetail>(revKey, swrFetcher);
+  const oldKey = previous
+    ? `/api/projects/${projectId}/revisions/${previous.id}`
+    : null;
+
+  const { data: newRev } = useSWR<RevisionDetail>(newKey, swrFetcher);
+  const { data: oldRev } = useSWR<RevisionDetail>(oldKey, swrFetcher);
+
+  const oldBody = previous ? oldRev?.body ?? "" : "";
+  const newBody = newRev?.body ?? "";
+  const diffReady = !!newRev && (!previous || !!oldRev);
 
   return (
-    <div className="fixed inset-0 z-40 flex">
-      <div className="flex-1 bg-black/30" onClick={onClose} />
-      <div className="flex h-full w-full max-w-[min(1200px,90vw)] flex-col border-l border-neutral-200 bg-white shadow-xl dark:border-neutral-800 dark:bg-neutral-950">
-        <div className="flex items-center justify-between border-b border-neutral-200 px-5 py-3 dark:border-neutral-800">
-          <div>
-            <h2 className="text-base font-semibold">History</h2>
-            <p className="text-xs text-neutral-500 font-mono">{pagePath}</p>
-          </div>
-          <button
-            onClick={onClose}
-            className="rounded px-2 py-1 text-sm text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-            aria-label="Close history"
-          >
-            ✕
-          </button>
-        </div>
+    <Sheet open onOpenChange={(o) => !o && onClose()}>
+      <SheetContent
+        side="right"
+        className="flex w-full max-w-[min(1600px,95vw)] flex-col gap-0 p-0 sm:max-w-[min(1600px,95vw)]"
+      >
+        <SheetHeader className="border-b border-neutral-200 px-5 py-3 dark:border-neutral-800">
+          <SheetTitle>History</SheetTitle>
+          <SheetDescription className="font-mono text-xs">
+            {pagePath}
+          </SheetDescription>
+        </SheetHeader>
 
         <div className="flex flex-1 overflow-hidden">
           <aside className="w-72 shrink-0 overflow-y-auto border-r border-neutral-200 dark:border-neutral-800">
@@ -63,11 +85,11 @@ export function HistoryPanel({
               {history?.map((r, i) => {
                 const ts = new Date(r.created_at);
                 const isLatest = i === 0;
-                const isSelected = selectedId === r.id;
+                const isSelected = selectedIndex === i;
                 return (
                   <li key={r.id}>
                     <button
-                      onClick={() => setSelectedId(r.id)}
+                      onClick={() => setSelectedIndex(i)}
                       className={`block w-full border-b border-neutral-100 px-4 py-3 text-left text-sm hover:bg-neutral-50 dark:border-neutral-900 dark:hover:bg-neutral-900 ${
                         isSelected
                           ? "bg-neutral-100 dark:bg-neutral-900"
@@ -98,23 +120,40 @@ export function HistoryPanel({
           </aside>
 
           <section className="flex-1 overflow-auto bg-neutral-50 dark:bg-neutral-900">
-            {!selectedId && (
+            {!selected && (
               <div className="p-6 text-sm text-neutral-500">
-                Pick a revision on the left to see its diff against the current page.
+                Pick a revision on the left.
               </div>
             )}
-            {selectedId && !revision && (
+            {selected && !diffReady && (
               <div className="p-6 text-sm text-neutral-500">Loading diff…</div>
             )}
-            {revision && (
-              <div className="text-sm">
+            {selected && diffReady && (
+              <div className="diff-host">
+                <div className="border-b border-neutral-200 px-5 py-2 text-xs text-neutral-600 dark:border-neutral-800 dark:text-neutral-400">
+                  {previous ? (
+                    <>
+                      Showing what changed in this revision (
+                      <span className="font-medium">{previous.author}</span>{" "}
+                      → <span className="font-medium">{selected.author}</span>)
+                    </>
+                  ) : (
+                    <>
+                      First revision — comparing against an empty page.
+                    </>
+                  )}
+                </div>
                 <ReactDiffViewer
-                  oldValue={revision.body}
-                  newValue={currentBody}
+                  oldValue={oldBody}
+                  newValue={newBody}
                   splitView={true}
                   compareMethod={DiffMethod.WORDS}
-                  leftTitle={`${revision.author} · ${new Date(revision.created_at).toLocaleString()}`}
-                  rightTitle="current"
+                  leftTitle={
+                    previous
+                      ? `${previous.author} · ${new Date(previous.created_at).toLocaleString()}`
+                      : "(empty)"
+                  }
+                  rightTitle={`${selected.author} · ${new Date(selected.created_at).toLocaleString()}`}
                   useDarkTheme={
                     typeof window !== "undefined" &&
                     window.matchMedia("(prefers-color-scheme: dark)").matches
@@ -124,10 +163,7 @@ export function HistoryPanel({
             )}
           </section>
         </div>
-      </div>
-    </div>
+      </SheetContent>
+    </Sheet>
   );
 }
-
-// Suppress unused export warning
-void api;

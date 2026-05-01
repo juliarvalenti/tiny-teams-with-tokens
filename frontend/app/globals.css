@@ -20,6 +20,57 @@ body {
   line-height: 1.6;
 }
 
+/* Standup cards use the same Crepe editor but in a tight surface — shrink
+ * type, padding, and headings so it reads like a card not a page. */
+.standup-section-body .milkdown-host .milkdown .ProseMirror {
+  padding: 0.5rem 0.75rem !important;
+  font-size: 13px;
+  line-height: 1.5;
+  min-height: 4rem;
+}
+.standup-section-body .milkdown-host .milkdown .ProseMirror h1,
+.standup-section-body .milkdown-host .milkdown .ProseMirror h2,
+.standup-section-body .milkdown-host .milkdown .ProseMirror h3,
+.standup-section-body .milkdown-host .milkdown .ProseMirror h4 {
+  font-size: 0.95rem;
+  margin-top: 0.5em;
+  margin-bottom: 0.25em;
+}
+.standup-section-body .milkdown-host .milkdown .ProseMirror p {
+  margin: 0.4em 0;
+}
+.standup-section-body .milkdown-host .milkdown .ProseMirror ul,
+.standup-section-body .milkdown-host .milkdown .ProseMirror ol {
+  margin: 0.4em 0;
+  padding-left: 0.5rem;
+}
+/* Crepe lists render as <li.list-item> with a .label-wrapper holding a 24×24
+ * SVG marker. In the cramped standup card, shrink the marker + tighten gap. */
+.standup-section-body .milkdown-host .milkdown .ProseMirror li.list-item {
+  gap: 0.35rem;
+  align-items: baseline;
+  padding: 0;
+}
+.standup-section-body .milkdown-host .milkdown .ProseMirror li.list-item .label-wrapper {
+  width: 0.85rem;
+  min-width: 0.85rem;
+  height: 1em;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.standup-section-body .milkdown-host .milkdown .ProseMirror li.list-item .label-wrapper .milkdown-icon svg {
+  width: 0.55rem;
+  height: 0.55rem;
+}
+.standup-section-body .milkdown-host .milkdown .ProseMirror li.list-item .children > .content-dom > p {
+  margin: 0.15em 0;
+}
+.standup-section-body .milkdown-host .milkdown .ProseMirror .milkdown-list-item-block {
+  margin: 0.15em 0;
+}
+
 /* Serif only for headings — bodies stay on system sans for density. */
 .milkdown-host .milkdown .ProseMirror h1,
 .milkdown-host .milkdown .ProseMirror h2,
@@ -36,4 +87,102 @@ body {
 .milkdown-host .milkdown .ProseMirror pre {
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   font-size: 0.9em;
+}
+
+/* Wrap long markdown lines in the diff viewer instead of horizontal-scrolling.
+ * react-diff-viewer-continued doesn't expose a wrapLines prop, so we override
+ * its inline-styled <pre>s. */
+.diff-host pre,
+.diff-host td > pre,
+.diff-host td > div {
+  white-space: pre-wrap !important;
+  word-break: break-word !important;
+  overflow-wrap: anywhere !important;
+}
+.diff-host td {
+  max-width: 0;  /* forces table to use available width per column */
+}
+
+@layer base {
+  .theme {
+    --font-heading: var(--font-sans);
+    --font-sans: var(--font-sans);
+  }
+  :root {
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.145 0 0);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.145 0 0);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.145 0 0);
+    --primary: oklch(0.205 0 0);
+    --primary-foreground: oklch(0.985 0 0);
+    --secondary: oklch(0.97 0 0);
+    --secondary-foreground: oklch(0.205 0 0);
+    --muted: oklch(0.97 0 0);
+    --muted-foreground: oklch(0.556 0 0);
+    --accent: oklch(0.97 0 0);
+    --accent-foreground: oklch(0.205 0 0);
+    --destructive: oklch(0.577 0.245 27.325);
+    --border: oklch(0.922 0 0);
+    --input: oklch(0.922 0 0);
+    --ring: oklch(0.708 0 0);
+    --chart-1: oklch(0.87 0 0);
+    --chart-2: oklch(0.556 0 0);
+    --chart-3: oklch(0.439 0 0);
+    --chart-4: oklch(0.371 0 0);
+    --chart-5: oklch(0.269 0 0);
+    --radius: 0.625rem;
+    --sidebar: oklch(0.985 0 0);
+    --sidebar-foreground: oklch(0.145 0 0);
+    --sidebar-primary: oklch(0.205 0 0);
+    --sidebar-primary-foreground: oklch(0.985 0 0);
+    --sidebar-accent: oklch(0.97 0 0);
+    --sidebar-accent-foreground: oklch(0.205 0 0);
+    --sidebar-border: oklch(0.922 0 0);
+    --sidebar-ring: oklch(0.708 0 0);
+  }
+  .dark {
+    --background: oklch(0.145 0 0);
+    --foreground: oklch(0.985 0 0);
+    --card: oklch(0.205 0 0);
+    --card-foreground: oklch(0.985 0 0);
+    --popover: oklch(0.205 0 0);
+    --popover-foreground: oklch(0.985 0 0);
+    --primary: oklch(0.922 0 0);
+    --primary-foreground: oklch(0.205 0 0);
+    --secondary: oklch(0.269 0 0);
+    --secondary-foreground: oklch(0.985 0 0);
+    --muted: oklch(0.269 0 0);
+    --muted-foreground: oklch(0.708 0 0);
+    --accent: oklch(0.269 0 0);
+    --accent-foreground: oklch(0.985 0 0);
+    --destructive: oklch(0.704 0.191 22.216);
+    --border: oklch(1 0 0 / 10%);
+    --input: oklch(1 0 0 / 15%);
+    --ring: oklch(0.556 0 0);
+    --chart-1: oklch(0.87 0 0);
+    --chart-2: oklch(0.556 0 0);
+    --chart-3: oklch(0.439 0 0);
+    --chart-4: oklch(0.371 0 0);
+    --chart-5: oklch(0.269 0 0);
+    --sidebar: oklch(0.205 0 0);
+    --sidebar-foreground: oklch(0.985 0 0);
+    --sidebar-primary: oklch(0.488 0.243 264.376);
+    --sidebar-primary-foreground: oklch(0.985 0 0);
+    --sidebar-accent: oklch(0.269 0 0);
+    --sidebar-accent-foreground: oklch(0.985 0 0);
+    --sidebar-border: oklch(1 0 0 / 10%);
+    --sidebar-ring: oklch(0.556 0 0);
+  }
+  * {
+    border-color: var(--border);
+    outline-color: color-mix(in oklch, var(--ring) 50%, transparent);
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
 }

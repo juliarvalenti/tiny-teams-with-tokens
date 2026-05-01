@@ -5,7 +5,17 @@ import useSWR, { useSWRConfig } from "swr";
 import { ChatPanel } from "@/components/ChatPanel";
 import { ReingestButton } from "@/components/ReingestButton";
 import { ReportEditor } from "@/components/ReportEditor";
+import { StandupCard } from "@/components/StandupCard";
 import { WikiSidebar } from "@/components/WikiSidebar";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   api,
   swrFetcher,
@@ -62,24 +72,14 @@ export default function ProjectDetailPage({
 
   return (
     <main>
-      <div className="mb-4 flex items-baseline justify-between">
-        <h1 className="text-2xl font-semibold">{data.name}</h1>
-        <div className="flex items-center gap-3">
-          {data.locked ? (
-            <span className="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
-              ingest in progress…
-            </span>
-          ) : (
-            <span className="text-xs text-neutral-500">v{data.latest_version ?? "—"}</span>
-          )}
-          <ReingestButton projectId={id} disabled={data.locked} />
-        </div>
-      </div>
-
       <div className="grid gap-6 lg:grid-cols-[200px_1fr_360px]">
         <aside className="lg:sticky lg:top-6 self-start">
+          <h1 className="mb-4 truncate text-2xl font-semibold" title={data.name}>
+            {data.name}
+          </h1>
           {report.data ? (
             <WikiSidebar
+              reports={[{ path: "standup.md", title: "The Standup" }]}
               tree={report.data.page_tree}
               activePath={activePath}
               onSelect={setActivePath}
@@ -94,7 +94,9 @@ export default function ProjectDetailPage({
         </aside>
 
         <section>
-          {version != null && activeNode ? (
+          {version != null && activePath === "standup.md" ? (
+            <StandupCard projectId={id} version={version} locked={data.locked} />
+          ) : version != null && activeNode ? (
             <ReportEditor
               projectId={id}
               version={version}
@@ -115,6 +117,16 @@ export default function ProjectDetailPage({
         </section>
 
         <aside className="lg:sticky lg:top-6 self-start">
+          <div className="mb-4 flex h-8 items-center justify-end gap-3">
+            {data.locked ? (
+              <span className="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                ingest in progress…
+              </span>
+            ) : (
+              <span className="text-xs text-neutral-500">v{data.latest_version ?? "—"}</span>
+            )}
+            <ReingestButton projectId={id} disabled={data.locked} />
+          </div>
           <ChatPanel projectId={id} reportKey={reportKey} version={version} />
         </aside>
       </div>
@@ -187,53 +199,52 @@ function NewPageModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
-      <form
-        onSubmit={onSubmit}
-        className="w-full max-w-md rounded-lg border border-neutral-200 bg-white p-5 shadow-lg dark:border-neutral-800 dark:bg-neutral-900"
-      >
-        <h2 className="mb-2 text-lg font-semibold">New page</h2>
-        <p className="mb-3 text-xs text-neutral-500">
-          {parentPath ? (
-            <>
-              Will be created as a sub-page under <span className="font-mono">{parentPath}</span>.
-            </>
-          ) : (
-            <>Will be created at the top level.</>
-          )}{" "}
-          New pages are <span className="font-medium">stable</span> — they're yours; ingest won't rewrite them.
-        </p>
-        <input
-          autoFocus
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Page title (e.g. Roadmap)"
-          className="mb-3 w-full rounded border border-neutral-300 bg-white px-3 py-2 dark:border-neutral-700 dark:bg-neutral-900"
-          required
-        />
-        {error && (
-          <div className="mb-3 rounded border border-red-300 bg-red-50 p-2 text-sm text-red-900 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300">
-            {error}
-          </div>
-        )}
-        <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={submitting}
-            className="rounded px-3 py-1.5 text-sm text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={submitting || !title.trim()}
-            className="rounded bg-neutral-900 px-3 py-1.5 text-sm text-white disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900"
-          >
-            {submitting ? "Creating…" : "Create"}
-          </button>
-        </div>
-      </form>
-    </div>
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <form onSubmit={onSubmit}>
+          <DialogHeader>
+            <DialogTitle>New page</DialogTitle>
+            <DialogDescription>
+              {parentPath ? (
+                <>
+                  Will be created as a sub-page under{" "}
+                  <span className="font-mono">{parentPath}</span>.
+                </>
+              ) : (
+                <>Will be created at the top level.</>
+              )}{" "}
+              New pages are <span className="font-medium">stable</span> — they're
+              yours; ingest won't rewrite them.
+            </DialogDescription>
+          </DialogHeader>
+          <input
+            autoFocus
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Page title (e.g. Roadmap)"
+            className="my-4 w-full rounded border border-neutral-300 bg-white px-3 py-2 dark:border-neutral-700 dark:bg-neutral-900"
+            required
+          />
+          {error && (
+            <div className="mb-3 rounded border border-red-300 bg-red-50 p-2 text-sm text-red-900 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300">
+              {error}
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={onClose}
+              disabled={submitting}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={submitting || !title.trim()}>
+              {submitting ? "Creating…" : "Create"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

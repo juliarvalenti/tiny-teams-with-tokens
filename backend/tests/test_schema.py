@@ -7,6 +7,16 @@ def test_default_pages_have_required_kinds() -> None:
     assert "status.md" in paths
     assert set(schema.stable_paths()) == {"overview.md", "team.md", "glossary.md", "architecture.md"}
     assert set(schema.dynamic_paths()) == {"status.md", "activity.md", "conversations.md"}
+    assert set(schema.report_paths()) == {"standup.md"}
+
+
+def test_build_tree_excludes_surface_pages() -> None:
+    pages = {
+        "standup.md": "---\ntitle: Standup\nkind: dynamic\norder: -10\n---\nbody",
+        "overview.md": "---\ntitle: Overview\nkind: stable\norder: 0\n---\nbody",
+    }
+    tree = schema.build_tree(pages)
+    assert "standup.md" not in {n.path for n in tree}, "standup should not appear in sidebar"
 
 
 def test_validate_pages_returns_missing() -> None:

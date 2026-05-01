@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useSWRConfig } from "swr";
 import { api } from "@/lib/api";
+import { Button } from "@/components/ui/button";
 
 export function ReingestButton({
   projectId,
@@ -32,14 +33,15 @@ export function ReingestButton({
 
   return (
     <div>
-      <button
+      <Button
+        size="sm"
+        variant="outline"
         onClick={onClick}
         disabled={busy || disabled}
         title={disabled ? "ingest already in progress" : "Re-run the ingest pipeline"}
-        className="rounded border border-neutral-300 px-3 py-1 text-xs hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
       >
         {busy ? "Starting…" : "Reingest"}
-      </button>
+      </Button>
       {error && (
         <div className="mt-1 text-xs text-red-600 dark:text-red-400">{error}</div>
       )}

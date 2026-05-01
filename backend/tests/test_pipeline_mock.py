@@ -59,7 +59,7 @@ async def test_greenfield_writes_full_wiki(isolated_data):
             assert path in pages, f"missing required page: {path}"
         for path, md in pages.items():
             fm, _ = schema.parse_frontmatter(md)
-            assert fm.get("kind") in {"stable", "dynamic"}, f"{path} missing kind frontmatter"
+            assert fm.get("kind") in {"stable", "dynamic", "hidden", "report"}, f"{path} missing kind frontmatter"
 
 
 @pytest.mark.asyncio

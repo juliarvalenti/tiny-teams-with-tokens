@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
-PageKind = Literal["stable", "dynamic"]
+PageKind = Literal["stable", "dynamic", "hidden", "report"]
 
 
 @dataclass(frozen=True)
@@ -26,6 +26,7 @@ class PageSpec:
 # Default page set seeded on greenfield. Order is sidebar order at the same
 # depth; nesting is purely path-derived (`a/b.md` is a child of `a.md`).
 DEFAULT_PAGES: tuple[PageSpec, ...] = (
+    PageSpec("standup.md",        "report",  "The Standup",   -10, ("overview.md", "team.md", "glossary.md")),
     PageSpec("overview.md",      "stable",  "Overview",      0),
     PageSpec("team.md",           "stable",  "Team",          10),
     PageSpec("glossary.md",       "stable",  "Glossary",      20),
@@ -34,6 +35,10 @@ DEFAULT_PAGES: tuple[PageSpec, ...] = (
     PageSpec("activity.md",       "dynamic", "Activity",      50, ("overview.md", "glossary.md")),
     PageSpec("conversations.md",  "dynamic", "Conversations", 60, ("overview.md", "team.md")),
 )
+
+# Pages that surface as their own UI element (rendered above the wiki, not in
+# the sidebar tree). The sidebar tree should filter these out.
+SURFACE_PATHS: frozenset[str] = frozenset({"standup.md"})
 
 REQUIRED_PATHS: frozenset[str] = frozenset(p.path for p in DEFAULT_PAGES)
 SPEC_BY_PATH: dict[str, PageSpec] = {p.path: p for p in DEFAULT_PAGES}
@@ -47,6 +52,10 @@ def stable_paths() -> list[str]:
 
 def dynamic_paths() -> list[str]:
     return [p.path for p in DEFAULT_PAGES if p.kind == "dynamic"]
+
+
+def report_paths() -> list[str]:
+    return [p.path for p in DEFAULT_PAGES if p.kind == "report"]
 
 
 def validate_pages(pages: dict[str, str]) -> list[str]:
@@ -138,11 +147,13 @@ class PageNode:
 def build_tree(pages: dict[str, str]) -> list[PageNode]:
     """Build a hierarchical tree from `{path: markdown}`. Root pages have no parent.
 
-    `architecture/design.md` is a child of `architecture.md` if both exist;
-    otherwise a synthetic group node `architecture` is inserted.
+    Pages in `SURFACE_PATHS` (e.g. `standup.md`) are excluded — they have their
+    own UI surface above the wiki, not a sidebar entry.
     """
     nodes: dict[str, PageNode] = {}
     for path, md in pages.items():
+        if path in SURFACE_PATHS:
+            continue
         fm, _ = parse_frontmatter(md)
         spec = SPEC_BY_PATH.get(path)
         title = str(fm.get("title") or (spec.title if spec else _path_to_title(path)))
