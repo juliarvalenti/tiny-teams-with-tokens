@@ -81,26 +81,47 @@ export function ChatPanel({
           return;
         }
 
-        // Streaming reader was unreliable in Firefox dev mode (resp.body
-        // returned 0 bytes despite 200 OK). Read the whole response and
-        // replay frames after-the-fact. Tradeoff: no token-by-token; tool
-        // calls + final answer still render. We can swap back to true
-        // streaming once the underlying browser issue is sorted.
-        const text = await resp.text();
+        // True SSE streaming: read chunks as they arrive and dispatch each
+        // complete frame (events separated by a blank line) immediately.
+        // Buffer carries any partial trailing frame across chunk boundaries.
+        if (!resp.body) throw new Error("response has no readable body");
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
         let touchedFiles = false;
-        // SSE frames are CRLF or LF, separated by a blank line. Split on both.
-        for (const frame of text.split(/\r?\n\r?\n/)) {
-          if (!frame.trim()) continue;
-          const event = parseSseFrame(frame);
-          if (!event) continue;
-          setTurns((prev) => applyEvent(prev, event));
-          if (event.type === "tool_call") {
-            const p = event.payload as {
-              tool?: string;
-              input?: { file_path?: string; path?: string };
-            };
-            if (p.tool === "Edit" || p.tool === "Write") touchedFiles = true;
+
+        const flush = (chunk: string) => {
+          buffer += chunk;
+          while (true) {
+            const m = buffer.match(/\r?\n\r?\n/);
+            if (!m || m.index === undefined) break;
+            const frame = buffer.slice(0, m.index);
+            buffer = buffer.slice(m.index + m[0].length);
+            if (!frame.trim()) continue;
+            const event = parseSseFrame(frame);
+            if (!event) continue;
+            setTurns((prev) => applyEvent(prev, event));
+            if (event.type === "tool_call") {
+              const p = event.payload as {
+                tool?: string;
+                input?: { file_path?: string; path?: string };
+              };
+              if (p.tool === "Edit" || p.tool === "Write") touchedFiles = true;
+            }
           }
+        };
+
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          flush(decoder.decode(value, { stream: true }));
+        }
+        // Drain any final partial frame.
+        flush(decoder.decode());
+        if (buffer.trim()) {
+          const event = parseSseFrame(buffer);
+          if (event) setTurns((prev) => applyEvent(prev, event));
         }
         if (touchedFiles) {
           if (reportKey) mutate(reportKey);
