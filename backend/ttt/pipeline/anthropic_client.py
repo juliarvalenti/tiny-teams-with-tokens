@@ -31,7 +31,10 @@ def _get_client() -> AsyncAnthropic:
             raise RuntimeError(
                 "ANTHROPIC_API_KEY is not set; cannot make Messages API calls."
             )
-        _client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+        kwargs: dict = {"api_key": settings.anthropic_api_key}
+        if settings.anthropic_base_url:
+            kwargs["base_url"] = settings.anthropic_base_url
+        _client = AsyncAnthropic(**kwargs)
     return _client
 
 

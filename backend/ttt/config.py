@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=str(_PROJECT_ROOT / ".env"), extra="ignore")
 
     anthropic_api_key: str = ""
+    anthropic_base_url: str = ""  # set to proxy URL e.g. http://localhost:8099
 
     github_token: str = ""
     confluence_base_url: str = ""
