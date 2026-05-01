@@ -128,7 +128,7 @@ export function ReportEditor({
       <div className="rounded border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
         <CrepeEditor
           ref={editorRef}
-          key={`${pagePath}-${data.git_commit}-${editorEpoch}`}
+          key={`${pagePath}-${data.revision_id ?? "none"}-${editorEpoch}`}
           initialMarkdown={data.body}
           readonly={!isEditing}
         />

@@ -5,13 +5,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from ttt.api import chat, projects, reports
 from ttt.db import init_db
-from ttt.reports.repo import init_report_repo
+from ttt.reports.repo import init_store
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    init_report_repo()
+    init_store()
     yield
 
 

@@ -43,12 +43,11 @@ Without that split, every reingest re-derives identity from the latest activity 
 ```
 Project (sqlite)
 ├── id, name, charter, repos[], confluence_roots[], webex_channels[], locked, ...
-└── reports[]: pointer rows (version, git_commit, ingested_at, summary, is_greenfield)
+├── reports[]: ingest-snapshot rows (version, ingested_at, summary, is_greenfield)
+└── page_revisions[]: (path, markdown, author, message, created_at, report_id?)
 
-Report content lives in git, not the DB:
-data/reports.git/         (bare repo)
-data/reports-wc/          (working clone the API writes through)
-└── <project_id>/
+Filesystem cache for the chat agent's Read/Edit/Write tools (regenerable):
+data/wiki/<project_id>/
     ├── overview.md       (stable: purpose + active goals = "the anchor")
     ├── team.md           (stable)
     ├── glossary.md       (stable)
@@ -142,17 +141,15 @@ We researched. The "Anthropic Agent SDK" doesn't exist as a separate framework �
 
 ## 4. Audit & versioning
 
-Every ingest is one git commit. Every human edit is one git commit. The audit trail is `git log` — no separate audit table needed.
+Every ingest produces a `Report` row + N `PageRevision` rows (one per page) sharing that `report_id`. Every human or chat edit produces one `PageRevision` row with `report_id=NULL`. The audit trail is a query — no git substrate, no pointer-update bug class.
 
-```bash
-cd data/reports-wc
-git log -- <project_id>/overview.md     # who/when changed overview
-git show <sha> -- <project_id>/         # full state at a version
+```sql
+SELECT created_at, author, message FROM pagerevision
+ WHERE project_id = ? AND path = 'overview.md'
+ ORDER BY created_at DESC;
 ```
 
-The bare repo at `data/reports.git` is the system-of-record; `data/reports-wc` is just a working clone for the API to write through. Both gitignored (the reports repo is independent of this codebase's git).
-
-`Report` rows in sqlite point at git commits via `git_commit`. To roll back to v1, you'd revert a commit in the report repo and write a new Report row pointing at the new HEAD; we don't have a UI for this yet.
+Roll back to a prior revision: insert a new `PageRevision` whose markdown is taken from the historical row. The `data/wiki/<project_id>/` filesystem mirror is regenerable via `report_repo.sync_to_disk(project_id)`.
 
 ---
 

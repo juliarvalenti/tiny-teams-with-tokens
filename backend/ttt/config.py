@@ -21,8 +21,9 @@ class Settings(BaseSettings):
     webex_token: str = ""
 
     ttt_db_path: Path = _PROJECT_ROOT / "data" / "ttt.db"
-    ttt_report_repo: Path = _PROJECT_ROOT / "data" / "reports.git"
-    ttt_report_worktree: Path = _PROJECT_ROOT / "data" / "reports-wc"
+    # Filesystem cache mirroring the latest page state — sqlite is authoritative.
+    # The chat agent's Read/Edit/Write tools operate on these files directly.
+    ttt_wiki_dir: Path = _PROJECT_ROOT / "data" / "wiki"
 
     extractor_model: str = "claude-haiku-4-5"
     synthesizer_model: str = "claude-haiku-4-5"  # PoC: cheapest tier; bump to opus later for quality

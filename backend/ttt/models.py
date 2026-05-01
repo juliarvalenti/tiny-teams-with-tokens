@@ -27,10 +27,24 @@ class Report(SQLModel, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     project_id: UUID = Field(foreign_key="project.id", index=True)
     version: int
-    git_commit: str
     ingested_at: datetime = Field(default_factory=_utcnow)
     summary: str = ""
     is_greenfield: bool = False
+
+
+class PageRevision(SQLModel, table=True):
+    """One row per page mutation. Reading a page = latest row by created_at.
+    `report_id` set when the revision was produced by an ingest run; NULL for
+    human/chat edits. History viewer queries by (project_id, path)."""
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    project_id: UUID = Field(foreign_key="project.id", index=True)
+    path: str = Field(index=True)
+    markdown: str
+    author: str = "ttt"
+    message: str = ""
+    created_at: datetime = Field(default_factory=_utcnow, index=True)
+    report_id: UUID | None = Field(default=None, foreign_key="report.id", index=True)
 
 
 class IngestRun(SQLModel, table=True):

@@ -15,7 +15,7 @@ The stable/dynamic split is the core architectural decision. Don't undo it witho
 
 - **Backend**: Python 3.12, FastAPI, SQLModel + SQLite, `anthropic` SDK (Messages API).
 - **Frontend**: Next.js 15 + React 19 + Tailwind + SWR + Milkdown Crepe (markdown WYSIWYG, markdown is the model).
-- **Storage**: SQLite for project/report metadata. **Report content lives in a local bare git repo** at `data/reports.git`, with a working clone at `data/reports-wc`. We shell out to `git` via subprocess.
+- **Storage**: SQLite for everything. Page content lives in the `pagerevision` table (one row per save, latest-by-`created_at` is the current page). A filesystem cache at `data/wiki/<project_id>/` mirrors the current state so the chat agent's Read/Edit/Write tools operate on real files; sqlite is authoritative.
 - **Package management**: `uv` for Python, `npm ci` for frontend. Versions pinned, `save-exact=true` in `frontend/.npmrc`.
 - **LLM**: Haiku for everything in PoC (~7 calls per ingest, pennies). Configurable in `backend/ttt/config.py`.
 
@@ -94,7 +94,7 @@ If you (the agent) are picking this up cold, follow the "How to pick this up col
 
 ## Don't
 
-- Don't replace the git-backed report storage with a database table. The audit story relies on `git log`.
+- Don't reintroduce git-backed page storage. We migrated to a `pagerevision` table — audit is `SELECT … ORDER BY created_at DESC` per page. The `data/wiki/` filesystem is a regenerable cache.
 - Don't collapse the stable/dynamic split. PLAN.md §6.1 explains why.
 - Don't add propose-diff / human-in-the-loop review machinery. PLAN.md §6.2 — auto-accept everywhere is a deliberate choice.
 - Don't introduce a workflow framework (Airflow/Prefect/Celery). PLAN.md §6.7.

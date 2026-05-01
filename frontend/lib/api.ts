@@ -44,7 +44,6 @@ export type ReportTreeResponse = {
   id: string;
   project_id: string;
   version: number;
-  git_commit: string;
   ingested_at: string;
   summary: string;
   is_greenfield: boolean;
@@ -56,7 +55,9 @@ export type PageResponse = {
   markdown: string;
   frontmatter: Record<string, unknown>;
   body: string;
-  git_commit: string;
+  revision_id: string | null;
+  updated_at: string | null;
+  author: string | null;
 };
 
 export const api = {
@@ -75,7 +76,7 @@ export const api = {
     ),
 
   putPage: (projectId: string, version: number, pagePath: string, markdown: string) =>
-    req<{ git_commit: string; path: string }>(
+    req<{ path: string }>(
       `/api/projects/${projectId}/reports/${version}/pages/${pagePath}`,
       { method: "PUT", body: JSON.stringify({ markdown }) },
     ),
@@ -85,7 +86,7 @@ export const api = {
     version: number,
     body: { path: string; title: string; parent_path?: string },
   ) =>
-    req<{ git_commit: string; path: string; title: string }>(
+    req<{ path: string; title: string }>(
       `/api/projects/${projectId}/reports/${version}/pages`,
       { method: "POST", body: JSON.stringify(body) },
     ),

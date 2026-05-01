@@ -41,7 +41,7 @@ def _get_or_create_session(session: Session, project_id: UUID) -> ChatSession:
 
 
 def _latest_stable_pages(project_id: UUID) -> dict[str, str]:
-    """Return the latest version's stable pages for the project (path → markdown).
+    """Return the current stable pages for the project (path → markdown).
     Empty dict if no report exists yet."""
     with Session(engine) as ses:
         report = ses.exec(
@@ -51,7 +51,7 @@ def _latest_stable_pages(project_id: UUID) -> dict[str, str]:
         ).first()
         if not report:
             return {}
-    pages = report_repo.list_pages(project_id, report.git_commit)
+    pages = report_repo.list_pages(project_id)
     return {p: pages[p] for p in pages if p in {"overview.md", "team.md", "glossary.md", "architecture.md"}}
 
 

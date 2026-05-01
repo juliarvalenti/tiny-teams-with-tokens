@@ -1,6 +1,6 @@
 # tiny teams with tokens
 
-Status reports for engineering teams that move fast with AI agents — pulled from GitHub, Confluence, and Webex, synthesized by Claude, persisted as a git-backed wiki you can edit.
+Status reports for engineering teams that move fast with AI agents — pulled from GitHub, Confluence, and Webex, synthesized by Claude, persisted as an editable wiki.
 
 > **Status:** PoC. Real GitHub connector. Confluence + Webex connectors stubbed pending creds. Built one afternoon, expect rough edges.
 
@@ -111,10 +111,10 @@ frontend/
     ├── ReportEditor.tsx     SWR-fetched page + Crepe edit/save
     └── CrepeEditor.tsx      thin Milkdown wrapper
 
-data/                        gitignored — local sqlite + bare git repo for reports
+data/                        gitignored — local sqlite + filesystem cache
 ```
 
-Reports are stored as a tree of markdown files in a local bare git repo at `data/reports.git`, one directory per project. Every ingest produces a single commit. Every human edit produces a single commit. So the audit trail is `git log` — you can `cd data/reports-wc && git log -- <project_id>/overview.md` to see every change to a page, who made it, and when.
+Pages live in the `pagerevision` table — one row per save. The current state of any page is the latest revision; history is a query. A filesystem cache at `data/wiki/<project_id>/` mirrors the current pages so the chat agent's Read/Edit/Write tools work on real files; sqlite is the source of truth and the FS is regenerable.
 
 ## Run tests
 

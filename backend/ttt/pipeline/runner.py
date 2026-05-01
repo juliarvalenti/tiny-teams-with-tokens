@@ -99,7 +99,7 @@ async def run_ingest(
 
         prior_pages: dict[str, str] = {}
         if prior:
-            prior_pages = report_repo.list_pages(project.id, prior.git_commit)
+            prior_pages = report_repo.list_pages(project.id)
 
         # 1. Fetch sources in parallel.
         since = prior.ingested_at if prior else None
@@ -196,26 +196,29 @@ async def run_ingest(
             all_pages[path] = report_schema.page_with_frontmatter(spec, body)
 
         next_version = (prior.version + 1) if prior else 1
-        sha = report_repo.write_pages(
+        report = Report(
+            project_id=project.id,
+            version=next_version,
+            summary="",
+            is_greenfield=is_greenfield,
+        )
+        session.add(report)
+        session.commit()
+        session.refresh(report)
+
+        report_repo.write_pages(
             project.id,
             all_pages,
             message=f"ingest v{next_version} ({'greenfield' if is_greenfield else 'incremental'})",
             author="ttt-pipeline",
+            report_id=report.id,
         )
 
-        # Validation: confirm all required pages exist at this commit.
-        committed_pages = report_repo.list_pages(project.id, sha)
+        committed_pages = report_repo.list_pages(project.id)
         missing = report_schema.validate_pages(committed_pages)
         if missing:
-            log.warning("v%d missing required pages after commit: %s", next_version, missing)
-
-        report = Report(
-            project_id=project.id,
-            version=next_version,
-            git_commit=sha,
-            summary=_summary_from_overview(committed_pages),
-            is_greenfield=is_greenfield,
-        )
+            log.warning("v%d missing required pages after write: %s", next_version, missing)
+        report.summary = _summary_from_overview(committed_pages)
         session.add(report)
         run.status = "success"
         run.finished_at = datetime.now(timezone.utc)

@@ -1,8 +1,7 @@
 FROM python:3.12-slim
 
-# `git` is required by reports/repo.py (we shell out)
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends git ca-certificates \
+    && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # Pinned uv version matching local dev (0.7.x line)
@@ -20,10 +19,9 @@ COPY backend ./backend
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONPATH="/app/backend" \
     TTT_DB_PATH=/data/ttt.db \
-    TTT_REPORT_REPO=/data/reports.git \
-    TTT_REPORT_WORKTREE=/data/reports-wc
+    TTT_WIKI_DIR=/data/wiki
 
-# Persist DB + report repo across container restarts
+# Persist DB + wiki cache across container restarts
 VOLUME ["/data"]
 
 EXPOSE 8765

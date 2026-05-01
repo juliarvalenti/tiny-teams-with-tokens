@@ -54,13 +54,15 @@ def list_reports(project_id: UUID, session: Session = Depends(get_session)) -> l
 def get_report(
     project_id: UUID, version: int, session: Session = Depends(get_session)
 ) -> dict[str, Any]:
-    """Return the report's metadata + page tree (paths only — call /pages/{path} for content)."""
+    """Return the report's metadata + page tree built from the current page state.
+    Pre-#1, viewing an older version still shows the latest content; the version
+    number is metadata for reingest semantics, not snapshot retrieval."""
     report = session.exec(
         select(Report).where(Report.project_id == project_id, Report.version == version)
     ).first()
     if not report:
         raise HTTPException(404, "report not found")
-    pages = report_repo.list_pages(project_id, report.git_commit)
+    pages = report_repo.list_pages(project_id)
     tree = report_schema.build_tree(pages)
     return {
         **report.model_dump(),
@@ -81,16 +83,20 @@ def get_page(
     if not report:
         raise HTTPException(404, "report not found")
     try:
-        markdown = report_repo.read_page(project_id, report.git_commit, page_path)
-    except Exception:
+        markdown = report_repo.read_page(project_id, page_path)
+    except LookupError:
         raise HTTPException(404, f"page not found: {page_path}")
     fm, body = report_schema.parse_frontmatter(markdown)
+    history = report_repo.page_history(project_id, page_path)
+    latest = history[0] if history else None
     return {
         "path": page_path,
         "markdown": markdown,
         "frontmatter": fm,
         "body": body,
-        "git_commit": report.git_commit,
+        "revision_id": str(latest.id) if latest else None,
+        "updated_at": latest.created_at.isoformat() if latest else None,
+        "author": latest.author if latest else None,
     }
 
 
@@ -115,17 +121,14 @@ def put_page(
         raise HTTPException(404, "report not found")
 
     msg = body.message or f"edit {page_path} on v{version} by {body.author}"
-    new_sha = report_repo.write_page(
+    report_repo.write_page(
         project_id,
         page_path,
         body.markdown,
         message=msg,
         author=body.author,
     )
-    report.git_commit = new_sha
-    session.add(report)
-    session.commit()
-    return {"git_commit": new_sha, "path": page_path}
+    return {"path": page_path}
 
 
 @router.post("/projects/{project_id}/reports/{version}/pages")
@@ -147,7 +150,6 @@ def create_page(
     if not report:
         raise HTTPException(404, "report not found")
 
-    # Compute final path: nest under parent_path if provided.
     final_path = body.path
     if body.parent_path:
         parent_dir = body.parent_path.removesuffix(".md")
@@ -156,8 +158,7 @@ def create_page(
     if not final_path.endswith(".md"):
         final_path = final_path + ".md"
 
-    # Reject duplicates.
-    existing = report_repo.list_pages(project_id, report.git_commit)
+    existing = report_repo.list_pages(project_id)
     if final_path in existing:
         raise HTTPException(409, f"page already exists: {final_path}")
 
@@ -166,14 +167,11 @@ def create_page(
         fm,
         f"# {body.title}\n\n{report_schema.EMPTY_PAGE_PLACEHOLDER}\n",
     )
-    new_sha = report_repo.write_page(
+    report_repo.write_page(
         project_id,
         final_path,
         initial,
         message=f"create page {final_path} by {body.author}",
         author=body.author,
     )
-    report.git_commit = new_sha
-    session.add(report)
-    session.commit()
-    return {"git_commit": new_sha, "path": final_path, "title": body.title}
+    return {"path": final_path, "title": body.title}

@@ -32,11 +32,8 @@ from claude_agent_sdk import (
 )
 from claude_agent_sdk.types import StreamEvent
 
-from sqlmodel import Session, select
-
 from ttt.config import settings
-from ttt.db import engine
-from ttt.models import Project, Report
+from ttt.models import Project
 from ttt.reports import repo as report_repo
 from ttt.reports import schema as report_schema
 
@@ -105,9 +102,11 @@ When you reference wiki content, cite it like `(see overview.md)`. When you fetc
 # ---------- PostToolUse hook: commit edits ----------
 
 def make_commit_hook(project_id: UUID):
-    """Returns a PostToolUse hook that commits any Edit/Write to the report repo."""
+    """Returns a PostToolUse hook that records every chat Edit/Write as a new
+    PageRevision row. The agent edits the filesystem cache; this hook re-reads
+    the file and persists it to sqlite."""
 
-    project_dir = (settings.ttt_report_worktree / str(project_id)).resolve()
+    project_dir = (settings.ttt_wiki_dir / str(project_id)).resolve()
 
     async def commit_edited_file(input_data, tool_use_id, context):
         tool_name = input_data.get("tool_name", "")
@@ -123,7 +122,7 @@ def make_commit_hook(project_id: UUID):
             abs_path = Path(file_path).resolve()
             rel = abs_path.relative_to(project_dir)
         except (ValueError, OSError) as e:
-            log.warning("chat edit outside project dir, skipping commit: %s (%s)", file_path, e)
+            log.warning("chat edit outside project dir, skipping: %s (%s)", file_path, e)
             return {}
 
         if not abs_path.exists():
@@ -133,29 +132,16 @@ def make_commit_hook(project_id: UUID):
         try:
             content = abs_path.read_text()
             page_path = str(rel).replace("\\", "/")
-            sha = report_repo.write_page(
+            report_repo.write_page(
                 project_id,
                 page_path,
                 content,
                 message=f"chat edit: {page_path}",
                 author="ttt-chat",
             )
-            # CRITICAL: advance the Report row's git_commit pointer so
-            # subsequent reads see this edit. Without this the wiki commit
-            # exists in git but every API read still hits the stale sha.
-            with Session(engine) as ses:
-                latest = ses.exec(
-                    select(Report)
-                    .where(Report.project_id == project_id)
-                    .order_by(Report.version.desc())
-                ).first()
-                if latest:
-                    latest.git_commit = sha
-                    ses.add(latest)
-                    ses.commit()
-            log.info("chat committed %s → %s", page_path, sha[:8])
+            log.info("chat persisted %s", page_path)
         except Exception:
-            log.exception("chat commit hook failed for %s", file_path)
+            log.exception("chat persist hook failed for %s", file_path)
         return {}
 
     return commit_edited_file
@@ -173,8 +159,10 @@ async def stream_chat(
     """Run one chat turn against the Agent SDK and yield ChatEvents the API
     layer can fan out to SSE."""
 
-    project_dir = settings.ttt_report_worktree / str(project.id)
+    project_dir = settings.ttt_wiki_dir / str(project.id)
     project_dir.mkdir(parents=True, exist_ok=True)
+    # Make sure the FS cache reflects the latest sqlite state before the agent reads.
+    report_repo.sync_to_disk(project.id)
 
     options = ClaudeAgentOptions(
         cwd=str(project_dir),
