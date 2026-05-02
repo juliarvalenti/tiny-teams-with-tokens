@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import useSWR from "swr";
+import { ChatDock } from "@/components/chat/ChatDock";
 import { ProjectCard } from "@/components/ProjectCard";
 import { RelationshipsPanel } from "@/components/RelationshipsPanel";
 import { Button } from "@/components/ui/button";
@@ -28,23 +29,21 @@ export default function Home() {
   const doc = workspace.data;
 
   return (
-    <main>
+    <main className="pb-24">
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Projects</h1>
         <div className="flex gap-2">
           <Button
+            size="sm"
             variant="outline"
             onClick={() => setEditing(true)}
             title="Group projects, declare cross-project relationships"
           >
             Relationships
           </Button>
-          <Link
-            href="/projects/new"
-            className="inline-flex items-center justify-center rounded bg-neutral-900 px-3 py-1.5 text-sm text-white dark:bg-neutral-100 dark:text-neutral-900"
-          >
-            New project
-          </Link>
+          <Button size="sm" asChild>
+            <Link href="/projects/new">New project</Link>
+          </Button>
         </div>
       </div>
 
@@ -69,6 +68,8 @@ export default function Home() {
       )}
 
       {editing && <RelationshipsPanel onClose={() => setEditing(false)} />}
+
+      <ChatDock />
     </main>
   );
 }

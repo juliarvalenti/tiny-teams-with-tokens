@@ -107,7 +107,8 @@ def write_page(
 
 
 def read_page(project_id: UUID, page_path: str) -> str:
-    """Latest revision of a single page. Raises LookupError if missing."""
+    """Latest revision of a single page. Raises LookupError if missing or
+    if the latest revision is a tombstone (deleted)."""
     safe = _safe_page_path(page_path)
     with Session(engine) as session:
         rev = session.exec(
@@ -115,13 +116,14 @@ def read_page(project_id: UUID, page_path: str) -> str:
             .where(PageRevision.project_id == project_id, PageRevision.path == safe)
             .order_by(PageRevision.created_at.desc(), PageRevision.id.desc())
         ).first()
-    if not rev:
+    if not rev or rev.deleted:
         raise LookupError(f"page not found: {page_path}")
     return rev.markdown
 
 
 def list_pages(project_id: UUID) -> dict[str, str]:
-    """Return the current state: for each path, the latest revision."""
+    """Return the current state: for each path, the latest revision. Paths
+    whose latest revision is a tombstone are skipped."""
     with Session(engine) as session:
         rows = session.exec(
             select(PageRevision)
@@ -130,9 +132,45 @@ def list_pages(project_id: UUID) -> dict[str, str]:
         ).all()
     out: dict[str, str] = {}
     for r in rows:
-        if r.path not in out:
+        if r.path in out:
+            continue
+        if r.deleted:
+            # Tombstone wins; remember so a later revision (older row) doesn't resurrect.
+            out[r.path] = ""
+        else:
             out[r.path] = r.markdown
-    return out
+    return {p: md for p, md in out.items() if md != ""}
+
+
+def delete_page(
+    project_id: UUID,
+    page_path: str,
+    *,
+    author: str = "ttt",
+    message: str = "",
+) -> None:
+    """Tombstone the page — insert a deleted=True PageRevision so reads skip
+    it. History rows remain. Idempotent: deleting an already-deleted page is a
+    no-op-equivalent (just adds another tombstone row)."""
+    safe = _safe_page_path(page_path)
+    now = _utcnow()
+    with Session(engine) as session:
+        session.add(
+            PageRevision(
+                project_id=project_id,
+                path=safe,
+                markdown="",
+                author=author,
+                message=message or f"deleted {safe}",
+                created_at=now,
+                deleted=True,
+            )
+        )
+        session.commit()
+    # Remove the FS mirror so the chat agent's Glob/Read doesn't see a stale file.
+    target = _project_dir(project_id) / safe
+    if target.exists():
+        target.unlink()
 
 
 def page_history(project_id: UUID, page_path: str) -> list[PageRevision]:

@@ -42,7 +42,11 @@ export function IngestLogStream({ runId }: { runId: string | null }) {
 
   return (
     <Shell status={data.status}>
-      <div ref={scrollRef} className="h-[60vh] overflow-y-auto px-3 py-2 font-mono text-[12px] leading-relaxed">
+      <div
+        ref={scrollRef}
+        className="h-[60vh] overflow-y-auto px-3 py-2 font-mono text-[12px] leading-relaxed"
+        style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
+      >
         {lines.length === 0 ? (
           <Line dim>[--:--:--] · agent starting up…</Line>
         ) : (

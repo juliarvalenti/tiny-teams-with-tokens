@@ -28,7 +28,7 @@ from sqlmodel import Session, select
 
 from ttt.db import engine
 from ttt.models import IngestRun, Project, Report
-from ttt.pipeline.agent_core import build_agent_options
+from ttt.pipeline.agent_core import build_agent_options, build_citation_guidance
 from ttt.reports import repo as report_repo
 from ttt.reports import schema as report_schema
 
@@ -107,9 +107,11 @@ Stable pages are human-curated identity (purpose, team, glossary, architecture).
 
 PROCESS:
 1. Read existing pages with Read/Glob to understand current state.
-2. Use the github tools (mcp__github__*) to fetch recent commits, issues, PRs, releases, CODEOWNERS as needed. Cite specific items in pages: `[commit a1b2c3d]`, `[issue #142]`, `[PR #99]`.
+2. Use the github tools (mcp__github__*) to fetch recent commits, issues, PRs, releases, CODEOWNERS as needed.
 3. Write each page with Write. Keep frontmatter intact.
 4. Be tight and grounded. No vibes. If activity didn't move a goal, say so explicitly — silence is information.
+
+{build_citation_guidance(project.repos)}
 
 STANDUP STRUCTURE (`standup.md`) — exact 4 H2 sections, in this order:
 - `## What is this` (one or two sentences)
@@ -169,8 +171,11 @@ async def run_agent_ingest(
     project: Project,
     *,
     run: IngestRun,
+    seed: str | None = None,
 ) -> Report:
-    """Run an ingest as a Claude Agent SDK loop. Returns the new Report row."""
+    """Run an ingest as a Claude Agent SDK loop. Returns the new Report row.
+    `seed` is an optional one-shot user instruction passed alongside the
+    standard greenfield/incremental directive."""
     project.locked = True
     run.status = "running"
     session.add_all([project, run])
@@ -207,11 +212,19 @@ async def run_agent_ingest(
             on_write=_make_log_on_write(run.id),
         )
 
-        prompt = (
+        prompt_parts = [
             f"Run a {'GREENFIELD' if is_greenfield else 'INCREMENTAL'} ingest for "
             f"\"{project.name}\". Begin by reading the existing wiki pages, then fetch "
             f"recent activity and update pages per the system prompt."
-        )
+        ]
+        if seed and seed.strip():
+            prompt_parts.append(
+                "\n\nUSER SEED INSTRUCTION (one-shot focus for this run — interpret "
+                "alongside the standard process; do not let it override page-kind "
+                "preservation rules):\n"
+                f"{seed.strip()}"
+            )
+        prompt = "".join(prompt_parts)
 
         _append_log(
             run.id,
@@ -219,6 +232,8 @@ async def run_agent_ingest(
             f"(mode={'greenfield' if is_greenfield else 'incremental'}, model={INGEST_MODEL})",
         )
         _append_log(run.id, f"[{_now_iso()}] · repos: {', '.join(project.repos) or '(none)'}")
+        if seed and seed.strip():
+            _append_log(run.id, f"[{_now_iso()}] · seed: {seed.strip()[:200]}")
 
         tool_call_count = 0
         tool_call_names: dict[str, str] = {}  # id -> short tool label

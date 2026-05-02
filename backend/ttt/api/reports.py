@@ -235,6 +235,32 @@ def create_page(
     return {"path": final_path, "title": body.title, "kind": kind}
 
 
+@router.delete("/projects/{project_id}/reports/{version}/pages/{page_path:path}")
+def delete_page(
+    project_id: UUID,
+    version: int,
+    page_path: str,
+    session: Session = Depends(get_session),
+) -> dict[str, Any]:
+    """Soft-delete a page via tombstone PageRevision. History remains intact."""
+    project = session.get(Project, project_id)
+    if not project:
+        raise HTTPException(404, "project not found")
+    if project.locked:
+        raise HTTPException(409, "project is locked while ingest is running")
+    report = session.exec(
+        select(Report).where(Report.project_id == project_id, Report.version == version)
+    ).first()
+    if not report:
+        raise HTTPException(404, "report not found")
+    try:
+        report_repo.read_page(project_id, page_path)  # raises if already deleted/missing
+    except LookupError:
+        raise HTTPException(404, f"page not found: {page_path}")
+    report_repo.delete_page(project_id, page_path, author="ttt-web")
+    return {"deleted": True, "path": page_path}
+
+
 @router.patch("/projects/{project_id}/reports/{version}/pages/{page_path:path}/frontmatter")
 def patch_frontmatter(
     project_id: UUID,

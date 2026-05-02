@@ -281,7 +281,9 @@ def _summary_from_overview(pages: dict[str, str]) -> str:
     return ""
 
 
-async def dispatch_ingest(project_id: UUID, run_id: UUID) -> None:
+async def dispatch_ingest(
+    project_id: UUID, run_id: UUID, *, seed: str | None = None
+) -> None:
     """Background-task entrypoint. Routes to static or agent path based on config."""
     try:
         with Session(engine) as session:
@@ -294,8 +296,11 @@ async def dispatch_ingest(project_id: UUID, run_id: UUID) -> None:
                 # Lazy import — keeps the static path working even if the
                 # agent SDK / MCP wiring isn't installed locally.
                 from ttt.pipeline.agent_ingestor import run_agent_ingest
-                await run_agent_ingest(session, project, run=run)
+                await run_agent_ingest(session, project, run=run, seed=seed)
             else:
+                # Static path doesn't currently use the seed; still log it for audit.
+                if seed:
+                    log.info("static ingest ignoring seed: %s", seed[:200])
                 await run_ingest(session, project, run=run)
     except Exception:
         log.exception("ingest pipeline failed for project=%s run=%s", project_id, run_id)

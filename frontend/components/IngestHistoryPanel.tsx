@@ -145,7 +145,11 @@ function LogViewport({
   }, [lines.length, status]);
 
   return (
-    <div ref={scrollRef} className="h-full overflow-y-auto px-4 py-3 font-mono text-[12px] leading-relaxed text-neutral-100">
+    <div
+      ref={scrollRef}
+      className="h-full overflow-y-auto px-4 py-3 font-mono text-[12px] leading-relaxed text-neutral-100"
+      style={{ overflowWrap: "anywhere", wordBreak: "break-word" }}
+    >
       {lines.length === 0 ? (
         <div className="text-neutral-600">[--:--:--] · no log captured</div>
       ) : (

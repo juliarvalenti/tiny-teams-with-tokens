@@ -3,7 +3,7 @@
 import { use, useEffect, useMemo, useState } from "react";
 import useSWR, { useSWRConfig } from "swr";
 import { Pencil } from "lucide-react";
-import { ChatPanel } from "@/components/ChatPanel";
+import { ChatDock } from "@/components/chat/ChatDock";
 import { EditProjectModal } from "@/components/EditProjectModal";
 import { IngestHistoryPanel } from "@/components/IngestHistoryPanel";
 import { IngestLogStream } from "@/components/IngestLogStream";
@@ -76,40 +76,68 @@ export default function ProjectDetailPage({
   const data = project.data;
 
   return (
-    <main>
-      <div className="grid gap-6 lg:grid-cols-[200px_1fr_360px]">
-        <aside className="lg:sticky lg:top-6 self-start">
-          <div className="group/title mb-3 flex h-8 items-center gap-1.5">
-            <h1
-              className="truncate text-2xl font-semibold leading-none"
-              title={data.name}
-            >
-              {data.name}
-            </h1>
-            <button
-              onClick={() => setShowEditProject(true)}
-              className="rounded p-1 text-neutral-400 opacity-0 hover:bg-neutral-100 hover:text-neutral-700 group-hover/title:opacity-100 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
-              title="Edit project"
-              aria-label="Edit project"
-            >
-              <Pencil className="h-3.5 w-3.5" />
-            </button>
-          </div>
-          {report.data ? (
-            <WikiSidebar
-              reports={[{ path: "standup.md", title: "The Standup" }]}
-              tree={report.data.page_tree}
-              activePath={activePath}
-              onSelect={setActivePath}
-              onCreatePage={(parent) => setCreateUnder(parent)}
-              disabled={data.locked}
-            />
+    <main className="pb-24">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="group/title flex items-center gap-1.5">
+          <h1 className="truncate text-2xl font-semibold leading-none" title={data.name}>
+            {data.name}
+          </h1>
+          <button
+            onClick={() => setShowEditProject(true)}
+            className="rounded p-1 text-neutral-400 opacity-0 hover:bg-neutral-100 hover:text-neutral-700 group-hover/title:opacity-100 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+            title="Edit project"
+            aria-label="Edit project"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        <div className="flex h-8 items-center gap-3">
+          {data.locked ? (
+            <span className="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+              ingest in progress…
+            </span>
           ) : (
-            <p className="text-sm text-neutral-500">
-              {data.locked ? "Generating…" : "No report yet."}
-            </p>
+            <span className="text-xs text-neutral-500">v{data.latest_version ?? "—"}</span>
           )}
-        </aside>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setShowIngestHistory(true)}
+            title="View past ingest logs"
+          >
+            Logs
+          </Button>
+          <ReingestButton projectId={id} disabled={data.locked} />
+        </div>
+      </div>
+
+      <div
+        className={
+          data.locked ? "" : "grid gap-6 lg:grid-cols-[220px_1fr]"
+        }
+      >
+        {!data.locked && (
+          <aside className="lg:sticky lg:top-6 self-start">
+            {report.data ? (
+              <WikiSidebar
+                reports={[{ path: "standup.md", title: "The Standup" }]}
+                tree={report.data.page_tree}
+                activePath={activePath}
+                onSelect={setActivePath}
+                onCreatePage={(parent) => setCreateUnder(parent)}
+                onDeletePage={async (path) => {
+                  if (version == null) return;
+                  await api.deletePage(id, version, path);
+                  if (activePath === path) setActivePath("standup.md");
+                  if (reportKey) mutate(reportKey);
+                }}
+                disabled={false}
+              />
+            ) : (
+              <p className="text-sm text-neutral-500">No report yet.</p>
+            )}
+          </aside>
+        )}
 
         <section>
           {data.locked ? (
@@ -133,29 +161,9 @@ export default function ProjectDetailPage({
             <p className="text-sm text-neutral-500">Pick a page from the sidebar.</p>
           )}
         </section>
-
-        <aside className="lg:sticky lg:top-6 self-start">
-          <div className="mb-3 flex h-8 items-center justify-end gap-3">
-            {data.locked ? (
-              <span className="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
-                ingest in progress…
-              </span>
-            ) : (
-              <span className="text-xs text-neutral-500">v{data.latest_version ?? "—"}</span>
-            )}
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setShowIngestHistory(true)}
-              title="View past ingest logs"
-            >
-              Logs
-            </Button>
-            <ReingestButton projectId={id} disabled={data.locked} />
-          </div>
-          <ChatPanel projectId={id} reportKey={reportKey} version={version} />
-        </aside>
       </div>
+
+      <ChatDock projectId={id} projectName={data.name} />
 
       {showIngestHistory && (
         <IngestHistoryPanel

@@ -1,6 +1,6 @@
 "use client";
 
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { PageNode } from "@/lib/api";
 import { KindBadge } from "./KindBadge";
@@ -16,6 +16,7 @@ export function WikiSidebar({
   activePath,
   onSelect,
   onCreatePage,
+  onDeletePage,
   disabled,
 }: {
   reports: ReportLink[];
@@ -23,6 +24,7 @@ export function WikiSidebar({
   activePath: string | null;
   onSelect: (path: string) => void;
   onCreatePage: (parentPath: string | null) => void;
+  onDeletePage?: (path: string) => void;
   disabled?: boolean;
 }) {
   const [showHidden, setShowHidden] = useState(false);
@@ -110,6 +112,7 @@ export function WikiSidebar({
             activePath={activePath}
             onSelect={onSelect}
             onCreatePage={onCreatePage}
+            onDeletePage={onDeletePage}
             disabled={disabled}
           />
         ))}
@@ -137,6 +140,7 @@ function Branch({
   activePath,
   onSelect,
   onCreatePage,
+  onDeletePage,
   disabled,
 }: {
   node: PageNode;
@@ -144,6 +148,7 @@ function Branch({
   activePath: string | null;
   onSelect: (path: string) => void;
   onCreatePage: (parentPath: string | null) => void;
+  onDeletePage?: (path: string) => void;
   disabled?: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
@@ -167,16 +172,34 @@ function Branch({
           <KindBadge kind={node.kind} iconOnly />
           <span className="truncate">{node.title}</span>
         </button>
-        <button
-          onClick={() => onCreatePage(node.path)}
-          disabled={disabled}
-          title="Add a sub-page"
-          className={`rounded px-1 text-xs text-neutral-500 hover:bg-neutral-200 hover:text-neutral-900 disabled:opacity-40 dark:hover:bg-neutral-700 dark:hover:text-neutral-100 ${
+        <div
+          className={`flex items-center gap-0.5 ${
             hovered ? "opacity-100" : "opacity-0 group-hover:opacity-100"
           }`}
         >
-          +
-        </button>
+          <button
+            onClick={() => onCreatePage(node.path)}
+            disabled={disabled}
+            title="Add a sub-page"
+            className="rounded px-1 text-xs text-neutral-500 hover:bg-neutral-200 hover:text-neutral-900 disabled:opacity-40 dark:hover:bg-neutral-700 dark:hover:text-neutral-100"
+          >
+            +
+          </button>
+          {onDeletePage && (
+            <button
+              onClick={() => {
+                if (confirm(`Delete ${node.path}? History stays in the audit log.`)) {
+                  onDeletePage(node.path);
+                }
+              }}
+              disabled={disabled}
+              title="Delete page (soft)"
+              className="rounded p-0.5 text-neutral-500 hover:bg-red-100 hover:text-red-600 disabled:opacity-40 dark:hover:bg-red-900/40 dark:hover:text-red-400"
+            >
+              <Trash2 className="h-3 w-3" />
+            </button>
+          )}
+        </div>
       </div>
       {node.children.length > 0 && (
         <ul className="mt-0.5 space-y-0.5">
@@ -188,6 +211,7 @@ function Branch({
               activePath={activePath}
               onSelect={onSelect}
               onCreatePage={onCreatePage}
+              onDeletePage={onDeletePage}
               disabled={disabled}
             />
           ))}

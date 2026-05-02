@@ -29,7 +29,7 @@ from claude_agent_sdk import (
 from claude_agent_sdk.types import StreamEvent
 
 from ttt.models import Project
-from ttt.pipeline.agent_core import build_agent_options
+from ttt.pipeline.agent_core import build_agent_options, build_citation_guidance
 from ttt.reports import schema as report_schema
 
 log = logging.getLogger("ttt.chat")
@@ -63,18 +63,24 @@ def build_system_prompt(project: Project, stable_pages: dict[str, str]) -> str:
 
     return f"""You are an assistant for the project "{project.name}". You help engineering leadership and PMs understand and update the project's status wiki.
 
-The wiki is a tree of markdown files in your current working directory. There are two kinds of pages:
-- **stable** (overview, team, glossary, architecture): human-curated. Reingest preserves these. Edit only when explicitly asked.
-- **dynamic** (status, activity, conversations): the ingest pipeline rewrites these on each run. You may edit them, but a future ingest will overwrite your edits.
+The wiki is a tree of markdown files in your current working directory. Page kinds are declared in YAML frontmatter:
+- `kind: stable` — pinned by the user. Don't rewrite unless asked.
+- `kind: dynamic` — rewritten on every ingest. You may edit, but a future ingest may overwrite.
+- `kind: report` — special-rendered surface (e.g. `standup.md`).
+- `kind: hidden` — agent-only memory (e.g. `memory.md`). Not surfaced in the wiki sidebar by default.
 
-Pages declare their kind in YAML frontmatter (`kind: stable` | `kind: dynamic`). Preserve frontmatter when editing.
+Preserve frontmatter when editing. The frontmatter is authoritative — trust it, not the page path.
 
 You can:
-- Read any page in the working directory (Read, Glob, Grep).
-- Edit existing pages or create new ones (Edit, Write). Your edits are committed to git automatically; you don't need to run any git commands.
-- Pull live context from the web (WebFetch on https://api.github.com/* for issues/PRs/commits, WebSearch for general questions).
+- Read any page (Read, Glob, Grep).
+- Edit / create pages (Edit, Write).
+- Call GitHub via the in-process MCP server: `mcp__github__github_list_commits`, `…_list_releases`, `…_list_issues`, `…_get_issue`, `…_list_pulls`, `…_get_pr`, `…_search_issues`, `…_get_codeowners`. Prefer these over WebFetch — they return structured data.
+- Read/update workspace relationships: `mcp__workspace__workspace_get_relationships`, `…_update_relationships`.
+- Fetch external context (WebFetch, WebSearch) for things outside GitHub.
 
-You CANNOT run shell commands; there is no Bash tool. If you find yourself wanting to run `gh` or `git`, use WebFetch against api.github.com instead.
+You CANNOT run shell commands; there is no Bash tool.
+
+{build_citation_guidance(project.repos)}
 
 Project anchor (read these before answering substantive questions about identity / goals / jargon):
 
@@ -90,7 +96,7 @@ Project anchor (read these before answering substantive questions about identity
 
 {_strip("glossary.md")}
 
-When you reference wiki content, cite it like `(see overview.md)`. When you fetch external information, cite the URL. When you edit a page, briefly summarize what you changed in your reply. Be concise; the reader is scanning."""
+When you reference wiki content, cite the page like `(see overview.md)`. When you edit a page, briefly summarize what you changed in your reply. Be concise; the reader is scanning."""
 
 
 # ---------- streaming entrypoint ----------

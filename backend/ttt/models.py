@@ -35,7 +35,11 @@ class Report(SQLModel, table=True):
 class PageRevision(SQLModel, table=True):
     """One row per page mutation. Reading a page = latest row by created_at.
     `report_id` set when the revision was produced by an ingest run; NULL for
-    human/chat edits. History viewer queries by (project_id, path)."""
+    human/chat edits. History viewer queries by (project_id, path).
+
+    `deleted` is a tombstone flag — a revision with deleted=True hides the
+    page from list_pages() / read_page(). The history rows remain so audits
+    can see what was there. A subsequent non-deleted revision un-tombstones."""
 
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     project_id: UUID = Field(foreign_key="project.id", index=True)
@@ -45,6 +49,7 @@ class PageRevision(SQLModel, table=True):
     message: str = ""
     created_at: datetime = Field(default_factory=_utcnow, index=True)
     report_id: UUID | None = Field(default=None, foreign_key="report.id", index=True)
+    deleted: bool = False
 
 
 class IngestRun(SQLModel, table=True):
@@ -66,3 +71,21 @@ class ChatSession(SQLModel, table=True):
     sdk_session_id: str | None = None  # captured from ResultMessage on first turn
     created_at: datetime = Field(default_factory=_utcnow)
     last_used_at: datetime = Field(default_factory=_utcnow)
+
+
+class ChatMessage(SQLModel, table=True):
+    """User-facing transcript: one row per completed turn (user message or
+    assistant response). Distinct from the Agent SDK's own transcript, which
+    is keyed by `sdk_session_id` and contains tool_use blocks etc.
+
+    On chat reset, rows for the project are deleted along with the SDK
+    session id. Hydrating the UI on mount = SELECT WHERE project_id ORDER BY
+    created_at."""
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    project_id: UUID = Field(foreign_key="project.id", index=True)
+    role: str  # "user" | "assistant"
+    text: str = ""
+    error: str | None = None
+    tool_calls: list[dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=_utcnow, index=True)

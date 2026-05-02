@@ -10,30 +10,154 @@ body {
   @apply bg-neutral-50 text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100;
 }
 
-/* Tighten Crepe's default editor padding — its theme ships ~80px+ side padding. */
+/* ------------------------------------------------------------------------
+ * Markdown typography (shared across all Crepe surfaces).
+ *
+ * Three scopes — wiki (default), standup (compact card), chat (mid-density).
+ * Each picks a base font-size; the heading ramp + element spacing follow a
+ * consistent modular scale so hierarchy reads the same everywhere, just at
+ * different anchors.
+ *
+ * Heading scale (em-relative):
+ *   h6 0.85  h5 0.85  h4 1.00  h3 1.10  h2 1.25  h1 1.45
+ *
+ * Anchors (body px → h1 px):
+ *   wiki     15 → 21.75
+ *   chat     14 → 20.30
+ *   standup  13 → 18.85
+ * ------------------------------------------------------------------------ */
+
+/* ---- Base / wiki ---- */
+
 .milkdown-host .milkdown {
   padding: 0 !important;
 }
 .milkdown-host .milkdown .ProseMirror {
   padding: 1rem 1.25rem !important;
   font-size: 15px;
-  line-height: 1.6;
+  line-height: 1.65;
 }
 
-/* Standup cards use the same Crepe editor but in a tight surface — shrink
- * type, padding, and headings so it reads like a card not a page. */
+/* Headings — serif for visual distinction, modular ramp for hierarchy. */
+.milkdown-host .milkdown .ProseMirror h1,
+.milkdown-host .milkdown .ProseMirror h2,
+.milkdown-host .milkdown .ProseMirror h3,
+.milkdown-host .milkdown .ProseMirror h4,
+.milkdown-host .milkdown .ProseMirror h5,
+.milkdown-host .milkdown .ProseMirror h6 {
+  font-family: var(--font-serif), Georgia, "Times New Roman", serif;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+  font-weight: 600;
+  margin-top: 1.2em;
+  margin-bottom: 0.4em;
+}
+.milkdown-host .milkdown .ProseMirror h1 { font-size: 1.45em; }
+.milkdown-host .milkdown .ProseMirror h2 { font-size: 1.25em; }
+.milkdown-host .milkdown .ProseMirror h3 { font-size: 1.10em; }
+.milkdown-host .milkdown .ProseMirror h4 { font-size: 1.00em; font-weight: 700; }
+.milkdown-host .milkdown .ProseMirror h5,
+.milkdown-host .milkdown .ProseMirror h6 {
+  font-size: 0.85em;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgb(82 82 91);
+}
+.dark .milkdown-host .milkdown .ProseMirror h5,
+.dark .milkdown-host .milkdown .ProseMirror h6 {
+  color: rgb(161 161 170);
+}
+.milkdown-host .milkdown .ProseMirror h1:first-child,
+.milkdown-host .milkdown .ProseMirror h2:first-child,
+.milkdown-host .milkdown .ProseMirror h3:first-child {
+  margin-top: 0;
+}
+
+/* Paragraph + list rhythm. */
+.milkdown-host .milkdown .ProseMirror p {
+  margin: 0.6em 0;
+}
+.milkdown-host .milkdown .ProseMirror ul,
+.milkdown-host .milkdown .ProseMirror ol {
+  margin: 0.6em 0;
+  padding-left: 1.5rem;
+}
+.milkdown-host .milkdown .ProseMirror li > p {
+  margin: 0.2em 0;
+}
+
+/* Code — monospace with a chip-style background; sized as a fraction of
+ * surrounding text so it scales per-scope. */
+.milkdown-host .milkdown .ProseMirror code,
+.milkdown-host .milkdown .ProseMirror pre {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.88em;
+}
+.milkdown-host .milkdown .ProseMirror :not(pre) > code {
+  background: rgb(244 244 245);
+  padding: 0.1em 0.35em;
+  border-radius: 0.25rem;
+  border: 1px solid rgb(228 228 231);
+}
+.dark .milkdown-host .milkdown .ProseMirror :not(pre) > code {
+  background: rgb(39 39 42);
+  border-color: rgb(63 63 70);
+}
+.milkdown-host .milkdown .ProseMirror pre {
+  background: rgb(244 244 245);
+  padding: 0.75rem 1rem;
+  border-radius: 0.4rem;
+  border: 1px solid rgb(228 228 231);
+  overflow-x: auto;
+  line-height: 1.5;
+  margin: 0.8em 0;
+}
+.dark .milkdown-host .milkdown .ProseMirror pre {
+  background: rgb(24 24 27);
+  border-color: rgb(63 63 70);
+}
+
+/* Blockquote — subtle left rule, slightly muted text. */
+.milkdown-host .milkdown .ProseMirror blockquote {
+  border-left: 3px solid rgb(212 212 216);
+  padding: 0.1em 0 0.1em 0.9em;
+  margin: 0.8em 0;
+  color: rgb(82 82 91);
+}
+.dark .milkdown-host .milkdown .ProseMirror blockquote {
+  border-left-color: rgb(82 82 91);
+  color: rgb(161 161 170);
+}
+
+/* Horizontal rule. */
+.milkdown-host .milkdown .ProseMirror hr {
+  border: 0;
+  border-top: 1px solid rgb(228 228 231);
+  margin: 1.5em 0;
+}
+.dark .milkdown-host .milkdown .ProseMirror hr {
+  border-top-color: rgb(63 63 70);
+}
+
+/* ---- Standup card scope (compact) ----
+ * Override only what changes: smaller base, tighter padding, and Crepe's
+ * native list-item DOM (markers in a 24×24 SVG slot) gets shrunk so bullets
+ * sit close to the text. The heading ramp inherits from the base above. */
+
 .standup-section-body .milkdown-host .milkdown .ProseMirror {
   padding: 0.5rem 0.75rem !important;
   font-size: 13px;
-  line-height: 1.5;
+  line-height: 1.55;
   min-height: 4rem;
 }
 .standup-section-body .milkdown-host .milkdown .ProseMirror h1,
 .standup-section-body .milkdown-host .milkdown .ProseMirror h2,
 .standup-section-body .milkdown-host .milkdown .ProseMirror h3,
-.standup-section-body .milkdown-host .milkdown .ProseMirror h4 {
-  font-size: 0.95rem;
-  margin-top: 0.5em;
+.standup-section-body .milkdown-host .milkdown .ProseMirror h4,
+.standup-section-body .milkdown-host .milkdown .ProseMirror h5,
+.standup-section-body .milkdown-host .milkdown .ProseMirror h6 {
+  margin-top: 0.7em;
   margin-bottom: 0.25em;
 }
 .standup-section-body .milkdown-host .milkdown .ProseMirror p {
@@ -44,49 +168,39 @@ body {
   margin: 0.4em 0;
   padding-left: 0.5rem;
 }
-/* Crepe lists render as <li.list-item> with a .label-wrapper holding a 24×24
- * SVG marker. In the cramped standup card, shrink the marker + tighten gap. */
-.standup-section-body .milkdown-host .milkdown .ProseMirror li.list-item {
-  gap: 0.35rem;
-  align-items: baseline;
+/* Hide Crepe's custom SVG bullet/checkbox markers and fall back to the
+ * browser's native list-style. Crepe's marker is a flex-anchored 24×24 SVG
+ * that doesn't carry a text baseline, so it can't be aligned with the first
+ * line of text without ugly hacks. The native `list-style: disc/decimal`
+ * markers track the first line baseline by spec — alignment is free. */
+.standup-section-body .milkdown-host .milkdown .ProseMirror li.list-item,
+.chat-md-body .milkdown-host .milkdown .ProseMirror li.list-item {
+  display: list-item;
   padding: 0;
 }
-.standup-section-body .milkdown-host .milkdown .ProseMirror li.list-item .label-wrapper {
-  width: 0.85rem;
-  min-width: 0.85rem;
-  height: 1em;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+.standup-section-body .milkdown-host .milkdown .ProseMirror ul,
+.chat-md-body .milkdown-host .milkdown .ProseMirror ul {
+  list-style: disc;
 }
-.standup-section-body .milkdown-host .milkdown .ProseMirror li.list-item .label-wrapper .milkdown-icon svg {
-  width: 0.55rem;
-  height: 0.55rem;
+.standup-section-body .milkdown-host .milkdown .ProseMirror ol,
+.chat-md-body .milkdown-host .milkdown .ProseMirror ol {
+  list-style: decimal;
 }
-.standup-section-body .milkdown-host .milkdown .ProseMirror li.list-item .children > .content-dom > p {
+.standup-section-body .milkdown-host .milkdown .ProseMirror li.list-item > .label-wrapper,
+.chat-md-body .milkdown-host .milkdown .ProseMirror li.list-item > .label-wrapper {
+  display: none;
+}
+.standup-section-body .milkdown-host .milkdown .ProseMirror li.list-item > .children,
+.chat-md-body .milkdown-host .milkdown .ProseMirror li.list-item > .children {
+  display: contents;
+}
+.standup-section-body .milkdown-host .milkdown .ProseMirror li.list-item .children > .content-dom > p,
+.chat-md-body .milkdown-host .milkdown .ProseMirror li.list-item .children > .content-dom > p {
   margin: 0.15em 0;
 }
-.standup-section-body .milkdown-host .milkdown .ProseMirror .milkdown-list-item-block {
+.standup-section-body .milkdown-host .milkdown .ProseMirror .milkdown-list-item-block,
+.chat-md-body .milkdown-host .milkdown .ProseMirror .milkdown-list-item-block {
   margin: 0.15em 0;
-}
-
-/* Serif only for headings — bodies stay on system sans for density. */
-.milkdown-host .milkdown .ProseMirror h1,
-.milkdown-host .milkdown .ProseMirror h2,
-.milkdown-host .milkdown .ProseMirror h3,
-.milkdown-host .milkdown .ProseMirror h4 {
-  font-family: var(--font-serif), Georgia, "Times New Roman", serif;
-  letter-spacing: -0.01em;
-  line-height: 1.25;
-  font-weight: 600;
-}
-
-/* Inline + block code stay monospace — much easier to scan SHAs / paths. */
-.milkdown-host .milkdown .ProseMirror code,
-.milkdown-host .milkdown .ProseMirror pre {
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  font-size: 0.9em;
 }
 
 /* Wrap long markdown lines in the diff viewer instead of horizontal-scrolling.
@@ -101,6 +215,134 @@ body {
 }
 .diff-host td {
   max-width: 0;  /* forces table to use available width per column */
+}
+
+/* ---- Chat scope (assistant bubble) ----
+ * Mid-density: 14px body, slightly tighter leading than wiki. Strips outer
+ * padding so the bubble owns the spacing, and zeroes first/last paragraph
+ * margins so text sits flush against the bubble edges. Heading ramp + list
+ * compaction inherit from the base + the standup/chat shared rules above. */
+
+.chat-md-body .milkdown-host .milkdown .ProseMirror {
+  padding: 0 !important;
+  font-size: 14px;
+  line-height: 1.55;
+  min-height: 0;
+}
+.chat-md-body .milkdown-host .milkdown .ProseMirror p {
+  margin: 0.5em 0;
+}
+.chat-md-body .milkdown-host .milkdown .ProseMirror p:first-child { margin-top: 0; }
+.chat-md-body .milkdown-host .milkdown .ProseMirror p:last-child { margin-bottom: 0; }
+.chat-md-body .milkdown-host .milkdown .ProseMirror ul,
+.chat-md-body .milkdown-host .milkdown .ProseMirror ol {
+  margin: 0.5em 0;
+  padding-left: 1rem;
+}
+
+/* Make all rendered markdown links in Crepe surfaces clickable + open in a
+ * new tab. Crepe puts the URL in a `data-href` / `href`; ensure styles read. */
+.milkdown-host .milkdown .ProseMirror a {
+  color: rgb(37 99 235);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.dark .milkdown-host .milkdown .ProseMirror a {
+  color: rgb(96 165 250);
+}
+
+/* Confluence-style citation chips. Applied via Crepe's linkAttr hook to any
+ * <a> whose href points at a GitHub issue/PR/commit/release. */
+.milkdown-host .milkdown .ProseMirror a.md-citation {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.25em;
+  padding: 0 0.35em;
+  margin: 0 0.05em;
+  border-radius: 0.3rem;
+  font-size: 0.85em;
+  font-weight: 500;
+  border: 1px solid;
+  text-decoration: none;
+  vertical-align: baseline;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+.milkdown-host .milkdown .ProseMirror a.md-citation:hover {
+  text-decoration: underline;
+}
+.milkdown-host .milkdown .ProseMirror a.md-citation::before {
+  font-size: 0.85em;
+  opacity: 0.8;
+}
+.milkdown-host .milkdown .ProseMirror a.md-citation-issue {
+  border-color: rgb(74 222 128 / 0.5);
+  background: rgb(220 252 231 / 0.6);
+  color: rgb(22 101 52);
+}
+.dark .milkdown-host .milkdown .ProseMirror a.md-citation-issue {
+  border-color: rgb(34 197 94 / 0.4);
+  background: rgb(20 83 45 / 0.4);
+  color: rgb(134 239 172);
+}
+.milkdown-host .milkdown .ProseMirror a.md-citation-issue::before {
+  content: "ⓘ";
+}
+.milkdown-host .milkdown .ProseMirror a.md-citation-pr {
+  border-color: rgb(196 181 253 / 0.6);
+  background: rgb(237 233 254 / 0.6);
+  color: rgb(91 33 182);
+}
+.dark .milkdown-host .milkdown .ProseMirror a.md-citation-pr {
+  border-color: rgb(167 139 250 / 0.4);
+  background: rgb(76 29 149 / 0.4);
+  color: rgb(196 181 253);
+}
+.milkdown-host .milkdown .ProseMirror a.md-citation-pr::before {
+  content: "⤴";
+}
+.milkdown-host .milkdown .ProseMirror a.md-citation-commit {
+  border-color: rgb(148 163 184 / 0.6);
+  background: rgb(241 245 249 / 0.7);
+  color: rgb(51 65 85);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+.dark .milkdown-host .milkdown .ProseMirror a.md-citation-commit {
+  border-color: rgb(100 116 139 / 0.5);
+  background: rgb(30 41 59 / 0.6);
+  color: rgb(203 213 225);
+}
+.milkdown-host .milkdown .ProseMirror a.md-citation-commit::before {
+  content: "⌘";
+}
+.milkdown-host .milkdown .ProseMirror a.md-citation-release {
+  border-color: rgb(252 211 77 / 0.6);
+  background: rgb(254 243 199 / 0.6);
+  color: rgb(146 64 14);
+}
+.dark .milkdown-host .milkdown .ProseMirror a.md-citation-release {
+  border-color: rgb(245 158 11 / 0.4);
+  background: rgb(120 53 15 / 0.4);
+  color: rgb(252 211 77);
+}
+.milkdown-host .milkdown .ProseMirror a.md-citation-release::before {
+  content: "🏷";
+}
+.milkdown-host .milkdown .ProseMirror a.md-citation-mention {
+  border-color: rgb(96 165 250 / 0.5);
+  background: rgb(219 234 254 / 0.65);
+  color: rgb(30 64 175);
+  font-weight: 500;
+}
+.dark .milkdown-host .milkdown .ProseMirror a.md-citation-mention {
+  border-color: rgb(59 130 246 / 0.4);
+  background: rgb(30 58 138 / 0.4);
+  color: rgb(147 197 253);
+}
+/* Mention link text already starts with `@`; no ::before glyph. */
+.milkdown-host .milkdown .ProseMirror a.md-citation-mention::before {
+  content: "";
 }
 
 @layer base {

@@ -122,6 +122,12 @@ export const api = {
       { method: "PATCH", body: JSON.stringify(body) },
     ),
 
+  deletePage: (projectId: string, version: number, pagePath: string) =>
+    req<{ deleted: boolean; path: string }>(
+      `/api/projects/${projectId}/reports/${version}/pages/${pagePath}`,
+      { method: "DELETE" },
+    ),
+
   getRelationships: () => req<WorkspaceDoc>("/api/workspace/relationships"),
 
   putRelationships: (doc: WorkspaceDoc) =>

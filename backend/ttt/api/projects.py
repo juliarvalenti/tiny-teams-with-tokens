@@ -14,16 +14,25 @@ from ttt.pipeline.runner import dispatch_ingest
 router = APIRouter(tags=["projects"])
 
 
-def _start_ingest(session: Session, project: Project) -> IngestRun:
-    """Create an IngestRun row and schedule the pipeline as a background task."""
+def _start_ingest(
+    session: Session, project: Project, *, seed: str | None = None
+) -> IngestRun:
+    """Create an IngestRun row and schedule the pipeline as a background task.
+    `seed` is an optional one-shot instruction passed to the agent for this
+    run (e.g. "focus on the SSE leak today"). Persisted on the IngestRun for
+    audit so the Logs panel shows what triggered the run."""
     if project.locked:
         raise HTTPException(409, "ingest already in progress")
-    run = IngestRun(project_id=project.id, status="pending")
+    run = IngestRun(
+        project_id=project.id,
+        status="pending",
+        log=f"[seed] {seed}\n" if seed and seed.strip() else "",
+    )
     project.locked = True
     session.add_all([run, project])
     session.commit()
     session.refresh(run)
-    asyncio.create_task(dispatch_ingest(project.id, run.id))
+    asyncio.create_task(dispatch_ingest(project.id, run.id, seed=seed or None))
     return run
 
 
@@ -128,12 +137,21 @@ def update_project(
     return _summarize(session, project)
 
 
+class ReingestRequest(BaseModel):
+    seed: str | None = None  # optional one-shot instruction for this run
+
+
 @router.post("/projects/{project_id}/reingest")
-async def reingest(project_id: UUID, session: Session = Depends(get_session)) -> dict[str, Any]:
+async def reingest(
+    project_id: UUID,
+    body: ReingestRequest | None = None,
+    session: Session = Depends(get_session),
+) -> dict[str, Any]:
     project = session.get(Project, project_id)
     if not project:
         raise HTTPException(404, "project not found")
-    run = _start_ingest(session, project)
+    seed = body.seed if body else None
+    run = _start_ingest(session, project, seed=seed)
     return {"run_id": str(run.id), "status": run.status}
 
 
