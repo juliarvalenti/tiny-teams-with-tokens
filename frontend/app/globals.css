@@ -83,8 +83,34 @@ body {
   margin: 0.6em 0;
   padding-left: 1.5rem;
 }
+.milkdown-host .milkdown .ProseMirror ul { list-style: disc; }
+.milkdown-host .milkdown .ProseMirror ol { list-style: decimal; }
 .milkdown-host .milkdown .ProseMirror li > p {
   margin: 0.2em 0;
+}
+
+/* Crepe wraps each <li> in <div class="milkdown-list-item-block"> and emits
+ * its own marker inside <li> (text "1." for ordered, SVG dot for bullets).
+ * Both break native list rendering: the wrapper div makes the <li> a
+ * non-direct-child of <ol/ul> (no auto numbering), and the custom marker
+ * is a flex child with no text baseline (floats above text).
+ *
+ * Fix: collapse the wrapper via `display: contents`, hide Crepe's marker,
+ * and let the browser render native list-style markers — they baseline-
+ * align with the first line of text by spec. */
+.milkdown-host .milkdown .ProseMirror .milkdown-list-item-block {
+  display: contents;
+}
+.milkdown-host .milkdown .ProseMirror li.list-item {
+  display: list-item;
+  padding: 0;
+  margin: 0.2em 0;
+}
+.milkdown-host .milkdown .ProseMirror li.list-item > .label-wrapper {
+  display: none;
+}
+.milkdown-host .milkdown .ProseMirror li.list-item > .children {
+  display: contents;
 }
 
 /* Code — monospace with a chip-style background; sized as a fraction of
@@ -168,38 +194,14 @@ body {
   margin: 0.4em 0;
   padding-left: 0.5rem;
 }
-/* Hide Crepe's custom SVG bullet/checkbox markers and fall back to the
- * browser's native list-style. Crepe's marker is a flex-anchored 24×24 SVG
- * that doesn't carry a text baseline, so it can't be aligned with the first
- * line of text without ugly hacks. The native `list-style: disc/decimal`
- * markers track the first line baseline by spec — alignment is free. */
+/* Standup/chat just inherit the base list rendering — only override list
+ * margin if you want even tighter spacing. */
 .standup-section-body .milkdown-host .milkdown .ProseMirror li.list-item,
 .chat-md-body .milkdown-host .milkdown .ProseMirror li.list-item {
-  display: list-item;
-  padding: 0;
-}
-.standup-section-body .milkdown-host .milkdown .ProseMirror ul,
-.chat-md-body .milkdown-host .milkdown .ProseMirror ul {
-  list-style: disc;
-}
-.standup-section-body .milkdown-host .milkdown .ProseMirror ol,
-.chat-md-body .milkdown-host .milkdown .ProseMirror ol {
-  list-style: decimal;
-}
-.standup-section-body .milkdown-host .milkdown .ProseMirror li.list-item > .label-wrapper,
-.chat-md-body .milkdown-host .milkdown .ProseMirror li.list-item > .label-wrapper {
-  display: none;
-}
-.standup-section-body .milkdown-host .milkdown .ProseMirror li.list-item > .children,
-.chat-md-body .milkdown-host .milkdown .ProseMirror li.list-item > .children {
-  display: contents;
+  margin: 0.15em 0;
 }
 .standup-section-body .milkdown-host .milkdown .ProseMirror li.list-item .children > .content-dom > p,
 .chat-md-body .milkdown-host .milkdown .ProseMirror li.list-item .children > .content-dom > p {
-  margin: 0.15em 0;
-}
-.standup-section-body .milkdown-host .milkdown .ProseMirror .milkdown-list-item-block,
-.chat-md-body .milkdown-host .milkdown .ProseMirror .milkdown-list-item-block {
   margin: 0.15em 0;
 }
 
