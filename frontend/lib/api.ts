@@ -3,16 +3,46 @@ export type ProjectSummary = {
   name: string;
   locked: boolean;
   created_at: string;
+  phase: string | null;
+  cadence: string | null;
+  repo_count: number;
+  webex_room_count: number;
+  confluence_space_count: number;
   latest_version: number | null;
   latest_ingested_at: string | null;
 };
 
+export type RepoOut = {
+  id: string;
+  project_id: string;
+  slug: string;
+  url: string;
+  default_branch: string;
+};
+
+export type WebexRoomOut = {
+  id: string;
+  project_id: string;
+  slug: string;
+  name: string;
+  webex_id: string | null;
+};
+
+export type ConfluenceSpaceOut = {
+  id: string;
+  project_id: string;
+  slug: string;
+  name: string;
+  space_key: string;
+  base_url: string;
+};
+
 export type ProjectDetail = ProjectSummary & {
   charter: string;
-  repos: string[];
-  confluence_roots: string[];
-  webex_channels: string[];
   ingest_config: Record<string, unknown>;
+  repos: RepoOut[];
+  webex_rooms: WebexRoomOut[];
+  confluence_spaces: ConfluenceSpaceOut[];
   latest_run_id: string | null;
 };
 
@@ -65,22 +95,27 @@ export const api = {
   createProject: (body: {
     name: string;
     charter?: string;
+    phase?: string | null;
+    cadence?: string | null;
     repos?: string[];
-    confluence_roots?: string[];
-    webex_channels?: string[];
   }) => req<ProjectSummary>("/api/projects", { method: "POST", body: JSON.stringify(body) }),
 
   updateProject: (
     id: string,
     body: {
       charter?: string;
-      repos?: string[];
-      confluence_roots?: string[];
-      webex_channels?: string[];
+      phase?: string | null;
+      cadence?: string | null;
     },
   ) =>
     req<ProjectSummary>(`/api/projects/${id}`, {
       method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
+  addRepo: (projectId: string, body: { url: string; slug?: string; default_branch?: string }) =>
+    req<RepoOut>(`/api/projects/${projectId}/repos`, {
+      method: "POST",
       body: JSON.stringify(body),
     }),
 

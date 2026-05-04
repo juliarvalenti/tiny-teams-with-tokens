@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import {
   ProjectFormFields,
   emptyProjectFormValues,
-  projectFormValuesToArrays,
+  projectFormValuesToSubmit,
   type ProjectFormValues,
 } from "@/components/ProjectFormFields";
 
@@ -54,7 +54,7 @@ export default function NewProjectPage() {
     try {
       const created = await api.createProject({
         name: name.trim(),
-        ...projectFormValuesToArrays(values),
+        ...projectFormValuesToSubmit(values),
       });
 
       // Stitch relationships into the workspace doc if anything was picked.

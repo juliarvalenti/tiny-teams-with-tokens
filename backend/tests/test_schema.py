@@ -3,16 +3,41 @@ from ttt.reports import schema
 
 def test_default_pages_have_required_kinds() -> None:
     paths = {p.path for p in schema.DEFAULT_PAGES}
-    assert "overview.md" in paths
-    assert "status.md" in paths
-    # All seed pages default to dynamic — see schema.DEFAULT_PAGES rationale.
-    assert set(schema.default_stable_paths()) == set()
-    assert set(schema.default_dynamic_paths()) == {
-        "overview.md", "team.md", "glossary.md", "architecture.md",
-        "status.md", "activity.md", "conversations.md",
+    # Top-level cross-cutting pages — per-source detail lives under
+    # `repos/<slug>/...` etc., materialized by expand_template.
+    assert paths == {
+        "overview.md",
+        "product.md",
+        "architecture.md",
+        "marketing.md",
+        "conversations.md",
+        "standup.md",
+        "memory.md",
     }
+    assert set(schema.default_stable_paths()) == set()
     assert set(schema.default_report_paths()) == {"standup.md"}
     assert set(schema.default_hidden_paths()) == {"memory.md"}
+
+
+def test_repo_template_expands_under_prefix() -> None:
+    expanded = schema.expand_template("repos/mycelium", schema.REPO_TEMPLATE)
+    paths = {s.path for s in expanded}
+    assert "repos/mycelium/overview.md" in paths
+    assert "repos/mycelium/team.md" in paths
+    assert "repos/mycelium/conversations.md" in paths
+    # Top-level overview is unchanged.
+    assert "overview.md" not in paths
+
+
+def test_webex_template_expands_with_minimal_pages() -> None:
+    expanded = schema.expand_template(
+        "webex/ioc-mycelium-sre", schema.WEBEX_TEMPLATE
+    )
+    paths = {s.path for s in expanded}
+    assert paths == {
+        "webex/ioc-mycelium-sre/overview.md",
+        "webex/ioc-mycelium-sre/activity.md",
+    }
 
 
 def test_build_tree_excludes_surface_pages() -> None:
@@ -58,7 +83,7 @@ def test_stable_paths_in_uses_frontmatter_not_path() -> None:
         "overview.md": "---\nkind: stable\n---\nbody",
         # Custom page not in DEFAULT_PAGES but flagged stable should be preserved.
         "roadmap.md": "---\nkind: stable\n---\nbody",
-        "status.md": "---\nkind: dynamic\n---\nbody",
+        "product.md": "---\nkind: dynamic\n---\nbody",
         "memory.md": "---\nkind: hidden\n---\nbody",
     }
     preserve = set(schema.stable_paths_in(pages))
@@ -66,28 +91,31 @@ def test_stable_paths_in_uses_frontmatter_not_path() -> None:
 
 
 def test_validate_pages_returns_missing() -> None:
-    pages = {"overview.md": "x", "team.md": "y"}
+    pages = {"overview.md": "x", "product.md": "y"}
     missing = schema.validate_pages(pages)
-    assert "glossary.md" in missing
     assert "architecture.md" in missing
-    assert "status.md" in missing
+    assert "marketing.md" in missing
+    assert "conversations.md" in missing
+    assert "memory.md" in missing
     assert "overview.md" not in missing
 
 
 def test_frontmatter_roundtrip() -> None:
-    spec = schema.SPEC_BY_PATH["status.md"]
-    page = schema.page_with_frontmatter(spec, "## Status\n\nthings are fine.\n")
+    spec = schema.SPEC_BY_PATH["product.md"]
+    page = schema.page_with_frontmatter(spec, "## Roadmap\n\nQ3 milestones.\n")
     fm, body = schema.parse_frontmatter(page)
-    assert fm["title"] == "Status"
+    assert fm["title"] == "Product"
     assert fm["kind"] == "dynamic"
-    assert fm["order"] == 40
-    assert "things are fine" in body
+    assert fm["order"] == 10
+    assert "Q3 milestones" in body
 
 
 def test_build_tree_handles_nesting() -> None:
     pages = {
         "overview.md": schema.page_with_frontmatter(schema.SPEC_BY_PATH["overview.md"], "x"),
-        "architecture.md": schema.page_with_frontmatter(schema.SPEC_BY_PATH["architecture.md"], "x"),
+        "architecture.md": schema.page_with_frontmatter(
+            schema.SPEC_BY_PATH["architecture.md"], "x"
+        ),
         "architecture/design.md": "---\ntitle: Design\nkind: stable\norder: 0\n---\nbody",
     }
     tree = schema.build_tree(pages)
@@ -96,3 +124,20 @@ def test_build_tree_handles_nesting() -> None:
     assert "architecture.md" in paths_at_root
     arch = next(n for n in tree if n.path == "architecture.md")
     assert any(c.path == "architecture/design.md" for c in arch.children)
+
+
+def test_build_tree_handles_per_repo_subtree() -> None:
+    """Per-source subtrees nest correctly: `repos/mycelium/overview.md` should
+    appear under `repos/mycelium.md`. Without a parent `.md`, it's a root
+    orphan — that's expected and not a bug."""
+    pages = {
+        "repos/mycelium.md": "---\ntitle: mycelium\nkind: dynamic\norder: 0\n---\nbody",
+        "repos/mycelium/overview.md": (
+            "---\ntitle: Overview\nkind: dynamic\norder: 0\n---\nbody"
+        ),
+    }
+    tree = schema.build_tree(pages)
+    by_path = {n.path: n for n in tree}
+    assert "repos/mycelium.md" in by_path
+    parent = by_path["repos/mycelium.md"]
+    assert any(c.path == "repos/mycelium/overview.md" for c in parent.children)

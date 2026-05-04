@@ -24,22 +24,65 @@ class PageSpec:
     grounded_by: tuple[str, ...] = field(default_factory=tuple)
 
 
-# Default page set seeded on greenfield. Order is sidebar order at the same
-# depth; nesting is purely path-derived (`a/b.md` is a child of `a.md`).
-# All seed pages start as `dynamic` — the agent owns the wheel on greenfield
-# and on every reingest. Users can pin a page as `stable` later via the kind
-# toggle (or flip a page to `hidden`); the runtime trusts frontmatter.
+# Top-level seed pages for a Project — these describe the strategic effort
+# as a whole, cross-cutting across all attached Repos / WebexRooms /
+# ConfluenceSpaces. Per-source detail lives under `repos/<slug>/...`,
+# `webex/<slug>/...`, `confluence/<slug>/...` (see templates below).
+#
+# Order is sidebar order at the same depth; nesting is path-derived
+# (`a/b.md` is a child of `a.md`). All seed pages start `dynamic`; users can
+# pin one as `stable` post-hoc via the kind toggle.
 DEFAULT_PAGES: tuple[PageSpec, ...] = (
-    PageSpec("standup.md",        "report",  "The Standup",   -10, ("overview.md", "team.md", "glossary.md")),
+    PageSpec("standup.md",        "report",  "The Standup",   -10, ("overview.md",)),
+    PageSpec("overview.md",       "dynamic", "Overview",        0),
+    PageSpec("product.md",        "dynamic", "Product",        10),
+    PageSpec("architecture.md",   "dynamic", "Architecture",   20),
+    PageSpec("marketing.md",      "dynamic", "Marketing",      30),
+    PageSpec("conversations.md",  "dynamic", "Conversations",  40, ("overview.md",)),
+    PageSpec("memory.md",         "hidden",  "Memory",        100),
+)
+
+
+# Per-source page templates. Materialized into actual page paths by the
+# ingest agent — e.g. for a Repo with slug `mycelium`, REPO_TEMPLATE expands
+# into pages at `repos/mycelium/overview.md`, `repos/mycelium/team.md`, etc.
+#
+# Templates are intentionally minimal at first; we'll grow them once we have
+# a feel for what's useful per-source.
+
+REPO_TEMPLATE: tuple[PageSpec, ...] = (
     PageSpec("overview.md",       "dynamic", "Overview",        0),
     PageSpec("team.md",           "dynamic", "Team",           10),
     PageSpec("glossary.md",       "dynamic", "Glossary",       20),
     PageSpec("architecture.md",   "dynamic", "Architecture",   30),
-    PageSpec("status.md",         "dynamic", "Status",         40, ("overview.md", "team.md", "glossary.md")),
-    PageSpec("activity.md",       "dynamic", "Activity",       50, ("overview.md", "glossary.md")),
-    PageSpec("conversations.md",  "dynamic", "Conversations",  60, ("overview.md", "team.md")),
-    PageSpec("memory.md",         "hidden",  "Memory",        100),
+    PageSpec("status.md",         "dynamic", "Status",         40),
+    PageSpec("activity.md",       "dynamic", "Activity",       50),
+    PageSpec("conversations.md",  "dynamic", "Conversations",  60),
 )
+
+WEBEX_TEMPLATE: tuple[PageSpec, ...] = (
+    PageSpec("overview.md",       "dynamic", "Overview",        0),
+    PageSpec("activity.md",       "dynamic", "Activity",       10),
+)
+
+CONFLUENCE_TEMPLATE: tuple[PageSpec, ...] = (
+    PageSpec("overview.md",       "dynamic", "Overview",        0),
+)
+
+
+def expand_template(prefix: str, template: tuple[PageSpec, ...]) -> tuple[PageSpec, ...]:
+    """Materialize a per-source template under `<prefix>/`. Used to build the
+    full page enumeration shown to the ingest agent."""
+    return tuple(
+        PageSpec(
+            path=f"{prefix}/{spec.path}",
+            kind=spec.kind,
+            title=spec.title,
+            order=spec.order,
+            grounded_by=spec.grounded_by,
+        )
+        for spec in template
+    )
 
 
 # Seed body for hidden memory pages. Static: not LLM-generated. The agent

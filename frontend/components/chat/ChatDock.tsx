@@ -79,7 +79,7 @@ function ProjectScopedDock({
     `/api/projects/${projectId}`,
     swrFetcher,
   );
-  const repos = project?.repos ?? [];
+  const repos = (project?.repos ?? []).map((r) => r.url);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   function send() {

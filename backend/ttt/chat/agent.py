@@ -28,8 +28,11 @@ from claude_agent_sdk import (
 )
 from claude_agent_sdk.types import StreamEvent
 
+from sqlmodel import Session, select
+
 from ttt import prompts
-from ttt.models import Project
+from ttt.db import engine
+from ttt.models import Project, Repo
 from ttt.config import settings
 from ttt.pipeline.agent_core import build_agent_options, build_citation_guidance
 from ttt.reports import schema as report_schema
@@ -52,9 +55,17 @@ class ChatEvent:
 
 # ---------- system prompt ----------
 
-def build_system_prompt(project: Project, stable_pages: dict[str, str]) -> str:
-    """Inject project anchor (overview/team/glossary) into the system prompt
-    so Claude has identity + goals before any tool call."""
+def build_system_prompt(
+    project: Project, repos: list[Repo], stable_pages: dict[str, str]
+) -> str:
+    """Inject project identity + tree shape into the chat system prompt.
+
+    The wiki tree is two-level: cross-cutting top-level pages
+    (`overview.md`, `product.md`, `architecture.md`, `marketing.md`,
+    `conversations.md`) plus per-source subtrees under `repos/<slug>/`,
+    `webex/<slug>/`, `confluence/<slug>/`. We anchor with the top-level
+    `overview.md` so the agent has identity before any tool call; per-source
+    detail is read on demand."""
 
     def _strip(path: str) -> str:
         md = stable_pages.get(path, "")
@@ -63,23 +74,30 @@ def build_system_prompt(project: Project, stable_pages: dict[str, str]) -> str:
         _, body = report_schema.parse_frontmatter(md)
         return body.strip() or "_(empty)_"
 
+    repo_lines = (
+        "\n".join(f"  - `repos/{r.slug}/` ({r.url})" for r in repos)
+        if repos
+        else "  (none attached)"
+    )
+    repo_urls = [r.url for r in repos]
+
     project_block = f"""PROJECT: "{project.name}"
+phase: {project.phase or '(unset)'}    cadence: {project.cadence or '(unset)'}
 
-{build_citation_guidance(project.repos)}
+{build_citation_guidance(repo_urls)}
 
-Project anchor (read these before answering substantive questions about identity / goals / jargon):
+WIKI TREE:
+- Top-level pages: `overview.md`, `product.md`, `architecture.md`, `marketing.md`, `conversations.md` (cross-cutting), `standup.md` (report card), `memory.md` (hidden agent notes).
+- Per-repo subtrees under `repos/<slug>/`:
+{repo_lines}
+- Per-Webex-room subtrees under `webex/<slug>/` (empty until the connector ships).
+- Per-Confluence-space subtrees under `confluence/<slug>/` (empty until the connector ships).
+
+Project anchor (top-level overview — read repo-specific overviews under `repos/<slug>/overview.md` for code-level detail):
 
 # Overview
 
-{_strip("overview.md")}
-
-# Team
-
-{_strip("team.md")}
-
-# Glossary
-
-{_strip("glossary.md")}"""
+{_strip("overview.md")}"""
 
     return f"{prompts.load('CHAT')}\n\n---\n\n{project_block}"
 
@@ -96,10 +114,14 @@ async def stream_chat(
     """Run one chat turn against the Agent SDK and yield ChatEvents the API
     layer can fan out to SSE."""
 
+    with Session(engine) as ses:
+        repos = list(ses.exec(select(Repo).where(Repo.project_id == project.id)).all())
+    repo_urls = [r.url for r in repos]
+
     options = build_agent_options(
         project_id=project.id,
-        project_repos=project.repos,
-        system_prompt=build_system_prompt(project, stable_pages),
+        project_repos=repo_urls,
+        system_prompt=build_system_prompt(project, repos, stable_pages),
         model=CHAT_MODEL,
         max_turns=MAX_TURNS,
         persist_author="ttt-chat",
