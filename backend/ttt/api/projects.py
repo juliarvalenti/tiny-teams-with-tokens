@@ -1,5 +1,4 @@
 import shutil
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -14,6 +13,7 @@ from ttt.services.projects import (
     ProjectCreate,
     ProjectSummary,
     ProjectUpdate,
+    cancel_project_ingest,
     create_project_with_greenfield,
     list_project_summaries,
     reingest_project,
@@ -120,25 +120,7 @@ def list_ingests(
 def cancel_ingest(
     project_id: UUID, session: Session = Depends(get_session)
 ) -> dict[str, str]:
-    project = session.get(Project, project_id)
-    if not project:
-        raise HTTPException(404, "project not found")
-    if not project.locked:
-        raise HTTPException(409, "no ingest in progress")
-    run = session.exec(
-        select(IngestRun)
-        .where(IngestRun.project_id == project_id)
-        .order_by(IngestRun.started_at.desc())
-    ).first()
-    if run and run.status in ("pending", "running"):
-        run.status = "failed"
-        run.error = "cancelled by user"
-        run.finished_at = datetime.now(timezone.utc)
-        session.add(run)
-    project.locked = False
-    session.add(project)
-    session.commit()
-    return {"status": "cancelled"}
+    return cancel_project_ingest(session, project_id)
 
 
 @router.delete("/projects/{project_id}", status_code=204)

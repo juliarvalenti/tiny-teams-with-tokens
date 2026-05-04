@@ -6,7 +6,7 @@ the actual work here so both surfaces bind to the same types and behavior.
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
@@ -121,3 +121,28 @@ def reingest_project(
         raise HTTPException(404, "project not found")
     run = start_ingest(session, project, seed=seed)
     return IngestRunRef(run_id=run.id, project_id=project.id, status=run.status)
+
+
+def cancel_project_ingest(session: Session, project_id: UUID) -> dict[str, str]:
+    """Mark the latest pending/running IngestRun as failed and unlock the
+    project. Use this to recover a project whose ingest process died (e.g.
+    backend restart) and left the lock set."""
+    project = session.get(Project, project_id)
+    if not project:
+        raise HTTPException(404, "project not found")
+    if not project.locked:
+        raise HTTPException(409, "no ingest in progress")
+    run = session.exec(
+        select(IngestRun)
+        .where(IngestRun.project_id == project_id)
+        .order_by(IngestRun.started_at.desc())
+    ).first()
+    if run and run.status in ("pending", "running"):
+        run.status = "failed"
+        run.error = "cancelled by user"
+        run.finished_at = datetime.now(timezone.utc)
+        session.add(run)
+    project.locked = False
+    session.add(project)
+    session.commit()
+    return {"status": "cancelled"}

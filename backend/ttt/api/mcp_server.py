@@ -27,6 +27,7 @@ from ttt.services.projects import (
     IngestRunRef,
     ProjectCreate,
     ProjectSummary,
+    cancel_project_ingest,
     create_project_with_greenfield,
     list_project_summaries,
     reingest_project,
@@ -95,6 +96,25 @@ def ttt_reingest(project_id: str, seed: str | None = None) -> IngestRunRef:
         raise ValueError(f"invalid project_id {project_id!r}") from e
     with Session(engine) as session:
         return reingest_project(session, pid, seed=seed)
+
+
+@mcp.tool()
+def ttt_cancel_ingest(project_id: str) -> dict[str, str]:
+    """Cancel a project's in-flight ingest and unlock the project.
+
+    Use this to recover when an ingest process died (e.g. backend restart)
+    and left `locked: true`. Marks the latest pending/running IngestRun as
+    failed with `cancelled by user`.
+
+    Args:
+        project_id: The UUID of the project (from ttt_list_projects).
+    """
+    try:
+        pid = UUID(project_id)
+    except ValueError as e:
+        raise ValueError(f"invalid project_id {project_id!r}") from e
+    with Session(engine) as session:
+        return cancel_project_ingest(session, pid)
 
 
 @mcp.tool()
