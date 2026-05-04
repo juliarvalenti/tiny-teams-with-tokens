@@ -101,6 +101,39 @@ def build_citation_guidance(repos: list[str]) -> str:
     )
 
 
+def make_deny_unsafe_tools_hook():
+    """PreToolUse hook that hard-denies tools that bypass the persist hook
+    or grant arbitrary code execution. The SDK's `allowed_tools` is treated
+    as a soft hint by some agent loops — this enforces the deny list.
+
+    Bash is the headline offender: an agent can write files via `cat > path`
+    and skip the Edit/Write persist hook entirely, leaving the FS cache and
+    sqlite out of sync. We block it outright.
+    """
+    DENIED = {"Bash", "BashOutput", "KillShell"}
+
+    async def deny(input_data, _tool_use_id, _context):
+        tool_name = input_data.get("tool_name", "")
+        if tool_name in DENIED:
+            reason = (
+                f"{tool_name} is not available to TTT agents. Use Edit / Write "
+                "for file changes (so the persist hook records them in sqlite). "
+                "For code-level inspection of the repo, use the github MCP tools "
+                "(github_get_file, github_list_dir)."
+            )
+            log.warning("denied unsafe tool call: %s", tool_name)
+            return {
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "deny",
+                    "permissionDecisionReason": reason,
+                }
+            }
+        return {}
+
+    return deny
+
+
 def make_persist_hook(
     project_id: UUID,
     *,
@@ -198,6 +231,12 @@ def build_agent_options(
         include_partial_messages=include_partial_messages,
         max_turns=max_turns,
         hooks={
+            "PreToolUse": [
+                HookMatcher(
+                    matcher="Bash|BashOutput|KillShell",
+                    hooks=[make_deny_unsafe_tools_hook()],
+                )
+            ],
             "PostToolUse": [
                 HookMatcher(
                     matcher="Edit|Write",

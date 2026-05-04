@@ -268,6 +268,22 @@ async def run_agent_ingest(
                     f"(subtype={message.subtype}, turns={turns}, tool_calls={tool_call_count}, cost={cost_str})",
                 )
 
+        # FS → sqlite reconcile. Safety net: if a tool wrote files to the FS
+        # cache without going through the persist hook (e.g. Bash, even though
+        # we deny it), pull those changes into pagerevision so the UI sees them.
+        reconciled = report_repo.reconcile_from_disk(
+            project.id,
+            author="ttt-pipeline",
+            message="reconcile-from-disk",
+            report_id=report.id,
+        )
+        if reconciled:
+            _append_log(
+                run.id,
+                f"[{_now_iso()}] · reconciled {len(reconciled)} unpersisted file(s) "
+                f"from disk: {', '.join(reconciled)}",
+            )
+
         # Validation: confirm all required pages exist after the agent finished.
         committed = report_repo.list_pages(project.id)
         missing = report_schema.validate_pages(committed)

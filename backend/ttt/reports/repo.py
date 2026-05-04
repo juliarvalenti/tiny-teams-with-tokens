@@ -196,3 +196,44 @@ def sync_to_disk(project_id: UUID) -> None:
     pdir.mkdir(parents=True, exist_ok=True)
     for path, md in pages.items():
         _mirror_to_disk(project_id, path, md)
+
+
+def reconcile_from_disk(
+    project_id: UUID,
+    *,
+    author: str,
+    message: str,
+    report_id: UUID | None = None,
+) -> list[str]:
+    """FS-cache → sqlite reconcile. Walks `data/wiki/<project_id>/`, and for
+    every `.md` file whose contents differ from the latest pagerevision (or
+    has no revision at all), writes a new revision. Returns the list of page
+    paths reconciled — empty when the FS and sqlite are already in sync.
+
+    Use as a safety net at the end of an ingest in case a tool wrote to disk
+    without going through `write_page` (which is the single supported write
+    path; this function exists to recover from drift, not to encourage it).
+    """
+    pdir = _project_dir(project_id)
+    if not pdir.exists():
+        return []
+    current = list_pages(project_id)
+    reconciled: list[str] = []
+    for fp in sorted(pdir.rglob("*.md")):
+        rel = fp.relative_to(pdir).as_posix()
+        try:
+            disk = fp.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        if current.get(rel) == disk:
+            continue
+        write_page(
+            project_id,
+            rel,
+            disk,
+            message=f"{message}: {rel}",
+            author=author,
+            report_id=report_id,
+        )
+        reconciled.append(rel)
+    return reconciled

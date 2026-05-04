@@ -55,6 +55,16 @@ class IngestRunRef(BaseModel):
     status: str
 
 
+class IngestRunDetail(BaseModel):
+    run_id: UUID
+    project_id: UUID
+    status: str
+    started_at: datetime
+    finished_at: datetime | None
+    error: str | None
+    log: str
+
+
 # ---------- helpers ----------
 
 
@@ -121,6 +131,38 @@ def reingest_project(
         raise HTTPException(404, "project not found")
     run = start_ingest(session, project, seed=seed)
     return IngestRunRef(run_id=run.id, project_id=project.id, status=run.status)
+
+
+def get_ingest_run_detail(session: Session, run_id: UUID) -> IngestRunDetail:
+    """Fetch a single IngestRun by id with its full log buffer."""
+    run = session.get(IngestRun, run_id)
+    if not run:
+        raise HTTPException(404, "ingest run not found")
+    return IngestRunDetail(
+        run_id=run.id,
+        project_id=run.project_id,
+        status=run.status,
+        started_at=run.started_at,
+        finished_at=run.finished_at,
+        error=run.error,
+        log=run.log or "",
+    )
+
+
+def latest_ingest_run_for_project(
+    session: Session, project_id: UUID
+) -> IngestRunDetail:
+    """Fetch the most recent IngestRun for a project."""
+    if not session.get(Project, project_id):
+        raise HTTPException(404, "project not found")
+    run = session.exec(
+        select(IngestRun)
+        .where(IngestRun.project_id == project_id)
+        .order_by(IngestRun.started_at.desc())
+    ).first()
+    if not run:
+        raise HTTPException(404, "no ingest runs for this project")
+    return get_ingest_run_detail(session, run.id)
 
 
 def cancel_project_ingest(session: Session, project_id: UUID) -> dict[str, str]:

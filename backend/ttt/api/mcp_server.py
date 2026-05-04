@@ -24,11 +24,14 @@ from ttt.chat.agent import stream_chat
 from ttt.db import engine
 from ttt.models import ChatSession, Project, Report
 from ttt.services.projects import (
+    IngestRunDetail,
     IngestRunRef,
     ProjectCreate,
     ProjectSummary,
     cancel_project_ingest,
     create_project_with_greenfield,
+    get_ingest_run_detail,
+    latest_ingest_run_for_project,
     list_project_summaries,
     reingest_project,
 )
@@ -115,6 +118,39 @@ def ttt_cancel_ingest(project_id: str) -> dict[str, str]:
         raise ValueError(f"invalid project_id {project_id!r}") from e
     with Session(engine) as session:
         return cancel_project_ingest(session, pid)
+
+
+@mcp.tool()
+def ttt_get_ingest_log(
+    run_id: str | None = None, project_id: str | None = None, tail: int = 0
+) -> IngestRunDetail:
+    """Fetch the log + status of an ingest run.
+
+    Pass exactly one of `run_id` (a specific run) or `project_id` (the latest
+    run for that project). `tail` (lines) trims the log to the last N lines —
+    use 0 for the full buffer.
+
+    Args:
+        run_id: UUID of a specific IngestRun (from ttt_reingest).
+        project_id: UUID of a project — fetches its most recent run.
+        tail: If > 0, return only the last N log lines.
+    """
+    if bool(run_id) == bool(project_id):
+        raise ValueError("pass exactly one of run_id or project_id")
+    with Session(engine) as session:
+        try:
+            target = UUID(run_id or project_id)  # type: ignore[arg-type]
+        except ValueError as e:
+            raise ValueError("invalid uuid") from e
+        detail = (
+            get_ingest_run_detail(session, target)
+            if run_id
+            else latest_ingest_run_for_project(session, target)
+        )
+    if tail > 0 and detail.log:
+        lines = detail.log.splitlines()
+        detail = detail.model_copy(update={"log": "\n".join(lines[-tail:])})
+    return detail
 
 
 @mcp.tool()
