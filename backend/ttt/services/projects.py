@@ -49,6 +49,12 @@ class ProjectSummary(BaseModel):
     latest_ingested_at: datetime | None
 
 
+class IngestRunRef(BaseModel):
+    run_id: UUID
+    project_id: UUID
+    status: str
+
+
 # ---------- helpers ----------
 
 
@@ -103,3 +109,15 @@ def create_project_with_greenfield(
     session.refresh(project)
     start_ingest(session, project)
     return summarize(session, project)
+
+
+def reingest_project(
+    session: Session, project_id: UUID, *, seed: str | None = None
+) -> IngestRunRef:
+    """Look up a project by id and kick off an incremental ingest.
+    Raises HTTPException(404) if missing, (409) if already locked."""
+    project = session.get(Project, project_id)
+    if not project:
+        raise HTTPException(404, "project not found")
+    run = start_ingest(session, project, seed=seed)
+    return IngestRunRef(run_id=run.id, project_id=project.id, status=run.status)

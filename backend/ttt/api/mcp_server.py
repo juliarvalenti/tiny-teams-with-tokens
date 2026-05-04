@@ -24,10 +24,12 @@ from ttt.chat.agent import stream_chat
 from ttt.db import engine
 from ttt.models import ChatSession, Project, Report
 from ttt.services.projects import (
+    IngestRunRef,
     ProjectCreate,
     ProjectSummary,
     create_project_with_greenfield,
     list_project_summaries,
+    reingest_project,
 )
 
 log = logging.getLogger("ttt.mcp")
@@ -72,6 +74,27 @@ def ttt_create_project(
     )
     with Session(engine) as session:
         return create_project_with_greenfield(session, body)
+
+
+@mcp.tool()
+def ttt_reingest(project_id: str, seed: str | None = None) -> IngestRunRef:
+    """Kick off an incremental ingest for a project.
+
+    The ingest runs in the background; the returned `run_id` can be polled
+    via the HTTP API (`GET /api/ingest/{run_id}`). `seed` is an optional
+    one-shot instruction that biases this single run (e.g. "focus on the
+    auth refactor").
+
+    Args:
+        project_id: The UUID of the project (from ttt_list_projects).
+        seed: Optional one-shot focus instruction for this run.
+    """
+    try:
+        pid = UUID(project_id)
+    except ValueError as e:
+        raise ValueError(f"invalid project_id {project_id!r}") from e
+    with Session(engine) as session:
+        return reingest_project(session, pid, seed=seed)
 
 
 @mcp.tool()

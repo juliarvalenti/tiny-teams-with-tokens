@@ -16,7 +16,7 @@ from ttt.services.projects import (
     ProjectUpdate,
     create_project_with_greenfield,
     list_project_summaries,
-    start_ingest,
+    reingest_project,
     summarize,
 )
 
@@ -89,12 +89,9 @@ async def reingest(
     body: ReingestRequest | None = None,
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
-    project = session.get(Project, project_id)
-    if not project:
-        raise HTTPException(404, "project not found")
     seed = body.seed if body else None
-    run = start_ingest(session, project, seed=seed)
-    return {"run_id": str(run.id), "status": run.status}
+    ref = reingest_project(session, project_id, seed=seed)
+    return {"run_id": str(ref.run_id), "status": ref.status}
 
 
 @router.get("/projects/{project_id}/ingests")
