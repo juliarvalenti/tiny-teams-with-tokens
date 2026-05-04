@@ -43,6 +43,9 @@ GITHUB_MCP_TOOLS = [
     "mcp__github__github_get_pr",
     "mcp__github__github_search_issues",
     "mcp__github__github_get_codeowners",
+    "mcp__github__github_get_file",
+    "mcp__github__github_list_dir",
+    "mcp__github__github_get_readme",
 ]
 WORKSPACE_MCP_TOOLS = [
     "mcp__workspace__workspace_get_relationships",

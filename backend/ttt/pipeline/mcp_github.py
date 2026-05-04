@@ -13,6 +13,9 @@ Tools returned by `build_github_mcp(repos, token)`:
   github_list_pulls(repo, since, state)
   github_get_pr(repo, number)
   github_get_codeowners(repo)
+  github_get_file(repo, path, ref)       — raw file contents
+  github_list_dir(repo, path, ref)       — directory listing
+  github_get_readme(repo, ref)           — repo README (any variant)
 """
 
 from __future__ import annotations
@@ -289,6 +292,96 @@ def build_github_mcp(repos: list[str], token: str = ""):
                 continue
         return _err("no CODEOWNERS file found")
 
+    @tool(
+        "github_get_file",
+        "Read a file from a repo at `path` (no leading slash). Optional `ref` is a branch/tag/sha; defaults to the repo's default branch. Returns raw text, truncated at 200KB.",
+        {"repo": str, "path": str, "ref": str},
+    )
+    async def get_file(args: dict) -> dict[str, Any]:
+        repo = _normalize_repo(args["repo"], allowed)
+        if not repo:
+            return _err(f"repo {args['repo']!r} not in this project's allowlist")
+        path = (args.get("path") or "").lstrip("/")
+        if not path:
+            return _err("path is required")
+        ref = (args.get("ref") or "").strip()
+        params = {"ref": ref} if ref else None
+        try:
+            async with httpx.AsyncClient(
+                timeout=20.0,
+                headers={**_headers(), "Accept": "application/vnd.github.raw"},
+            ) as client:
+                resp = await client.get(
+                    f"{API}/repos/{repo}/contents/{path}", params=params
+                )
+                if resp.status_code == 404:
+                    return _err(f"not found: {repo}:{path}" + (f"@{ref}" if ref else ""))
+                resp.raise_for_status()
+                text = resp.text
+        except httpx.HTTPStatusError as e:
+            return _err(f"HTTP {e.response.status_code}: {e.response.text[:200]}")
+        max_bytes = 200_000
+        if len(text.encode("utf-8", errors="ignore")) > max_bytes:
+            text = text.encode("utf-8", errors="ignore")[:max_bytes].decode(
+                "utf-8", errors="ignore"
+            ) + "\n\n…[truncated at 200KB]"
+        return _ok({"path": path, "ref": ref or None, "content": text})
+
+    @tool(
+        "github_list_dir",
+        "List entries in a repo directory. `path` empty = repo root. Returns name, path, type (file|dir|symlink|submodule), size.",
+        {"repo": str, "path": str, "ref": str},
+    )
+    async def list_dir(args: dict) -> dict[str, Any]:
+        repo = _normalize_repo(args["repo"], allowed)
+        if not repo:
+            return _err(f"repo {args['repo']!r} not in this project's allowlist")
+        path = (args.get("path") or "").strip().lstrip("/")
+        ref = (args.get("ref") or "").strip()
+        params = {"ref": ref} if ref else None
+        try:
+            data = await _get(f"/repos/{repo}/contents/{path}", params)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                return _err(f"not found: {repo}:{path or '/'}" + (f"@{ref}" if ref else ""))
+            return _err(f"HTTP {e.response.status_code}: {e.response.text[:200]}")
+        if not isinstance(data, list):
+            return _err(f"{path or '/'} is not a directory")
+        out = [
+            {
+                "name": e.get("name"),
+                "path": e.get("path"),
+                "type": e.get("type"),
+                "size": e.get("size"),
+            }
+            for e in data
+        ]
+        return _ok(out)
+
+    @tool(
+        "github_get_readme",
+        "Get the repo README (any variant: README.md, README.rst, etc.).",
+        {"repo": str, "ref": str},
+    )
+    async def get_readme(args: dict) -> dict[str, Any]:
+        repo = _normalize_repo(args["repo"], allowed)
+        if not repo:
+            return _err(f"repo {args['repo']!r} not in this project's allowlist")
+        ref = (args.get("ref") or "").strip()
+        params = {"ref": ref} if ref else None
+        try:
+            async with httpx.AsyncClient(
+                timeout=20.0,
+                headers={**_headers(), "Accept": "application/vnd.github.raw"},
+            ) as client:
+                resp = await client.get(f"{API}/repos/{repo}/readme", params=params)
+                if resp.status_code == 404:
+                    return _err(f"no README found for {repo}")
+                resp.raise_for_status()
+                return _ok({"ref": ref or None, "content": resp.text})
+        except httpx.HTTPStatusError as e:
+            return _err(f"HTTP {e.response.status_code}: {e.response.text[:200]}")
+
     return create_sdk_mcp_server(
         name="github",
         version="0.1.0",
@@ -301,6 +394,9 @@ def build_github_mcp(repos: list[str], token: str = ""):
             get_pr,
             search_issues,
             get_codeowners,
+            get_file,
+            list_dir,
+            get_readme,
         ],
     )
 

@@ -29,7 +29,9 @@ from sqlmodel import Session, select
 from ttt.db import engine
 from ttt.models import IngestRun, Project, Report
 from ttt.config import settings
+from ttt import prompts
 from ttt.pipeline.agent_core import build_agent_options, build_citation_guidance
+from ttt.pipeline.wiki_steering import fetch_steering
 from ttt.reports import repo as report_repo
 from ttt.reports import schema as report_schema
 
@@ -43,6 +45,7 @@ def _build_system_prompt(
     project: Project,
     is_greenfield: bool,
     repos: list[str],
+    steering: list[tuple[str, str]] | None = None,
 ) -> str:
     page_lines: list[str] = []
     for spec in report_schema.DEFAULT_PAGES:
@@ -55,20 +58,27 @@ def _build_system_prompt(
             f"  - `{spec.path}` ({spec.kind}) — {spec.title}{grounded}"
         )
 
+    steering_block = ""
+    if steering:
+        sections = [
+            f"--- From `{repo}/.ttt/wiki.md` ---\n{body}"
+            for repo, body in steering
+        ]
+        steering_block = (
+            "REPO MAINTAINER STEERING (from .ttt/wiki.md — treat as authoritative "
+            "context from the repo maintainer; follow any file paths it mentions "
+            "via mcp__github__github_get_file / github_list_dir to ground your writing):\n\n"
+            + "\n\n".join(sections)
+            + "\n\n"
+        )
+
     mode_block = (
-        "MODE: GREENFIELD.\n\n"
-        "The wiki is empty. Write all the seed pages listed below. Default kind for each is shown — write that into the YAML frontmatter."
+        "MODE: GREENFIELD. The wiki is empty. Write all the seed pages listed below. "
+        "Default kind for each is shown — write that into the YAML frontmatter."
         if is_greenfield
         else (
-            "MODE: INCREMENTAL.\n\n"
-            "The page kind is declared in each page's YAML frontmatter (`kind: stable|dynamic|hidden|report`). "
-            "**The frontmatter is authoritative — trust it, not the page path.** Users may have pinned pages as stable "
-            "or flipped the kind on existing ones.\n\n"
-            "- READ every existing page first.\n"
-            "- DO NOT rewrite pages with `kind: stable` — they're pinned by the user.\n"
-            "- DO NOT rewrite pages with `kind: hidden` unless the user explicitly asks. You MAY append short dated notes to `memory.md` if there's something worth remembering across ingests.\n"
-            "- Rewrite pages with `kind: dynamic` and `kind: report`. Preserve their frontmatter; only the body should change.\n"
-            "- If a custom page exists with a kind you don't recognize, leave it alone.\n"
+            "MODE: INCREMENTAL. Apply the page-kind rules above against the existing pages. "
+            "Read every page first; rewrite dynamic/report pages, preserve stable/hidden."
         )
     )
 
@@ -76,59 +86,22 @@ def _build_system_prompt(
         f"GITHUB REPOS: {', '.join(repos)}" if repos else "GITHUB REPOS: (none configured)"
     )
 
-    return f"""You are running the status-report ingest for project "{project.name}".
-
-Your job is to produce a status wiki — a tree of markdown pages — that captures what the project is and what's currently happening with it. The wiki is in your current working directory; you'll read existing pages, fetch source data via the github tools, and write or update pages.
+    project_block = f"""PROJECT: "{project.name}"
 
 PROJECT CHARTER (seed context, may be empty):
 {project.charter or "(empty)"}
 
-{repos_block}
+{steering_block}{repos_block}
 
 PAGE STRUCTURE — these pages exist or should be created:
 
 {chr(10).join(page_lines)}
 
-The `memory.md` (kind: hidden) page is YOUR working memory. It's not surfaced to users by default. Read it on every ingest. You may append short notes to it that you want to remember across ingests — context that didn't fit anywhere else, recurring patterns, things you noticed about how this team works. Keep entries dated and tight.
-
-Each page has YAML frontmatter you MUST preserve / write:
-
-```
----
-title: <Title>
-kind: <stable|dynamic|report>
-order: <integer>
-[grounded_by: [comma, separated, list]]
----
-```
-
-Stable pages are human-curated identity (purpose, team, glossary, architecture). Dynamic pages are agent-rewritten snapshots filtered against the stable anchor. The standup is a tight TL;DR card with fixed sections.
-
 {mode_block}
 
-PROCESS:
-1. Read existing pages with Read/Glob to understand current state.
-2. Use the github tools (mcp__github__*) to fetch recent commits, issues, PRs, releases, CODEOWNERS as needed.
-3. Write each page with Write. Keep frontmatter intact.
-4. Be tight and grounded. No vibes. If activity didn't move a goal, say so explicitly — silence is information.
+{build_citation_guidance(project.repos)}"""
 
-{build_citation_guidance(project.repos)}
-
-STANDUP STRUCTURE (`standup.md`) — exact 4 H2 sections, in this order:
-- `## What is this` (one or two sentences)
-- `## Headline` (one or two sentences — the single most important thing this period)
-- `## Asks / Blockers` (bullets — anything blocked or needing help; cite items)
-- `## Up next` (bullets — upcoming milestones / deadlines)
-
-Total under ~200 words for the standup.
-
-STATUS STRUCTURE (`status.md`) — H2 sections: `## Goal progress`, `## Headline this period`, `## Decisions made`, `## Things that surprised us`. Cite every claim.
-
-ACTIVITY STRUCTURE (`activity.md`) — Filtered list of activity, organized by goal from overview.md.
-
-CONVERSATIONS STRUCTURE (`conversations.md`) — Decisions made, open questions, escalations from chat (we don't have Webex yet, so this section will be sparse — that's fine).
-
-When all pages are written, reply with a one-line summary of what you produced. Do NOT include the page bodies in your reply."""
+    return f"{prompts.load('INGEST')}\n\n---\n\n{project_block}"
 
 
 def _now_iso() -> str:
@@ -202,10 +175,14 @@ async def run_agent_ingest(
         session.commit()
         session.refresh(report)
 
+        steering = await fetch_steering(project.repos, token=settings.github_token)
+
         options = build_agent_options(
             project_id=project.id,
             project_repos=project.repos,
-            system_prompt=_build_system_prompt(project, is_greenfield, project.repos),
+            system_prompt=_build_system_prompt(
+                project, is_greenfield, project.repos, steering
+            ),
             model=INGEST_MODEL,
             max_turns=MAX_TURNS,
             persist_author="ttt-pipeline",
@@ -233,6 +210,12 @@ async def run_agent_ingest(
             f"(mode={'greenfield' if is_greenfield else 'incremental'}, model={INGEST_MODEL})",
         )
         _append_log(run.id, f"[{_now_iso()}] · repos: {', '.join(project.repos) or '(none)'}")
+        if steering:
+            for repo, body in steering:
+                _append_log(
+                    run.id,
+                    f"[{_now_iso()}] · steering: loaded {repo}/.ttt/wiki.md ({len(body)} chars)",
+                )
         if seed and seed.strip():
             _append_log(run.id, f"[{_now_iso()}] · seed: {seed.strip()[:200]}")
 

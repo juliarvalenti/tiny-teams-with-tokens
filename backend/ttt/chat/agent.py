@@ -28,6 +28,7 @@ from claude_agent_sdk import (
 )
 from claude_agent_sdk.types import StreamEvent
 
+from ttt import prompts
 from ttt.models import Project
 from ttt.config import settings
 from ttt.pipeline.agent_core import build_agent_options, build_citation_guidance
@@ -62,24 +63,7 @@ def build_system_prompt(project: Project, stable_pages: dict[str, str]) -> str:
         _, body = report_schema.parse_frontmatter(md)
         return body.strip() or "_(empty)_"
 
-    return f"""You are an assistant for the project "{project.name}". You help engineering leadership and PMs understand and update the project's status wiki.
-
-The wiki is a tree of markdown files in your current working directory. Page kinds are declared in YAML frontmatter:
-- `kind: stable` — pinned by the user. Don't rewrite unless asked.
-- `kind: dynamic` — rewritten on every ingest. You may edit, but a future ingest may overwrite.
-- `kind: report` — special-rendered surface (e.g. `standup.md`).
-- `kind: hidden` — agent-only memory (e.g. `memory.md`). Not surfaced in the wiki sidebar by default.
-
-Preserve frontmatter when editing. The frontmatter is authoritative — trust it, not the page path.
-
-You can:
-- Read any page (Read, Glob, Grep).
-- Edit / create pages (Edit, Write).
-- Call GitHub via the in-process MCP server: `mcp__github__github_list_commits`, `…_list_releases`, `…_list_issues`, `…_get_issue`, `…_list_pulls`, `…_get_pr`, `…_search_issues`, `…_get_codeowners`. Prefer these over WebFetch — they return structured data.
-- Read/update workspace relationships: `mcp__workspace__workspace_get_relationships`, `…_update_relationships`.
-- Fetch external context (WebFetch, WebSearch) for things outside GitHub.
-
-You CANNOT run shell commands; there is no Bash tool.
+    project_block = f"""PROJECT: "{project.name}"
 
 {build_citation_guidance(project.repos)}
 
@@ -95,9 +79,9 @@ Project anchor (read these before answering substantive questions about identity
 
 # Glossary
 
-{_strip("glossary.md")}
+{_strip("glossary.md")}"""
 
-When you reference wiki content, cite the page like `(see overview.md)`. When you edit a page, briefly summarize what you changed in your reply. Be concise; the reader is scanning."""
+    return f"{prompts.load('CHAT')}\n\n---\n\n{project_block}"
 
 
 # ---------- streaming entrypoint ----------
