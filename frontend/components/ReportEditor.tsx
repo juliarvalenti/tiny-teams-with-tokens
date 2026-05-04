@@ -135,7 +135,7 @@ export function ReportEditor({
       )}
 
       <div
-        className={`rounded border bg-white pb-16 transition-shadow dark:bg-neutral-900 ${editorFrame}`}
+        className={`rounded border bg-white mb-16 transition-shadow dark:bg-neutral-900 ${editorFrame}`}
       >
         <CrepeEditor
           ref={editorRef}

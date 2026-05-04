@@ -56,6 +56,14 @@ export default function ProjectDetailPage({
     setActivePath("standup.md");
   }, [report.data, activePath]);
 
+  // Reset the page scroll on every page switch so a long previous page
+  // doesn't leave the new one mid-scroll.
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0 });
+    }
+  }, [activePath]);
+
   const flatNodes = useMemo(
     () => (report.data ? flattenTree(report.data.page_tree) : []),
     [report.data],
@@ -130,7 +138,7 @@ export default function ProjectDetailPage({
         }
       >
         {!data.locked && (
-          <aside className="lg:sticky lg:top-6 self-start">
+          <aside className="self-start lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto lg:pr-1">
             {report.data ? (
               <WikiSidebar
                 reports={[{ path: "standup.md", title: "The Standup" }]}

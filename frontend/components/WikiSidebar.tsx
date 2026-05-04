@@ -1,6 +1,6 @@
 "use client";
 
-import { Eye, EyeOff, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Eye, EyeOff, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { PageNode } from "@/lib/api";
 import { KindBadge } from "./KindBadge";
@@ -152,14 +152,16 @@ function Branch({
   disabled?: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   const isActive = node.path === activePath;
   const isFolder = node.kind === "folder";
+  const Chevron = collapsed ? ChevronRight : ChevronDown;
   return (
     <li>
       <div
-        className={`group flex items-center justify-between rounded px-2 py-1 ${
+        className={`group flex min-w-0 items-center justify-between rounded px-2 py-1 ${
           isFolder
-            ? ""
+            ? "cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-900"
             : isActive
               ? "bg-neutral-200 dark:bg-neutral-800"
               : "hover:bg-neutral-100 dark:hover:bg-neutral-900"
@@ -169,15 +171,22 @@ function Branch({
         onMouseLeave={() => !isFolder && setHovered(false)}
       >
         {isFolder ? (
-          <span className="flex flex-1 items-center gap-2 text-xs font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
-            {node.title}
-          </span>
+          <button
+            type="button"
+            onClick={() => setCollapsed((c) => !c)}
+            className="flex min-w-0 flex-1 items-center gap-1 text-left text-xs font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400"
+          >
+            <Chevron className="h-3 w-3 shrink-0" />
+            <span className="truncate">{node.title}</span>
+          </button>
         ) : (
           <button
             onClick={() => onSelect(node.path)}
-            className="flex flex-1 items-center gap-2 text-left"
+            className="flex min-w-0 flex-1 items-center gap-2 text-left"
           >
-            <KindBadge kind={node.kind as Exclude<typeof node.kind, "folder">} iconOnly />
+            <span className="shrink-0">
+              <KindBadge kind={node.kind as Exclude<typeof node.kind, "folder">} iconOnly />
+            </span>
             <span className="truncate">{node.title}</span>
           </button>
         )}
@@ -212,7 +221,7 @@ function Branch({
           </div>
         )}
       </div>
-      {node.children.length > 0 && (
+      {node.children.length > 0 && !collapsed && (
         <ul className="mt-0.5 space-y-0.5">
           {node.children.map((child) => (
             <Branch
