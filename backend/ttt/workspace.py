@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Literal, cast
 
 import yaml
 
@@ -150,7 +150,12 @@ def _parse(raw: dict) -> WorkspaceDoc:
                 f"invalid relationship kind: {kind!r}; allowed: {sorted(ALLOWED_KINDS)}"
             )
         relationships.append(
-            Relationship(from_=frm, to=to, kind=kind, note=str(r.get("note") or ""))  # type: ignore[arg-type]
+            Relationship(
+                from_=frm,
+                to=to,
+                kind=cast(RelationshipKind, kind),
+                note=str(r.get("note") or ""),
+            )
         )
 
     return WorkspaceDoc(groups=groups, relationships=relationships)

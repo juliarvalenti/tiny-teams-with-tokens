@@ -26,6 +26,7 @@ dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
     "ruff>=0.7",
+    "ty>=0.0.1a5",
 ]
 
 [project.scripts]
@@ -46,3 +47,18 @@ pythonpath = ["backend"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+extend-exclude = ["test_proxy.py"]
+
+[tool.ruff.lint.per-file-ignores]
+"backend/tests/**" = ["F841"]
+
+[tool.ty.src]
+include = ["backend/ttt"]
+
+[tool.ty.rules]
+# SQLModel column descriptors (`Column.desc()`, `Column.asc()`, etc.) confuse
+# ty because the field is declared as `int`/`datetime`/`UUID` — the SQLAlchemy
+# descriptor magic isn't modelled in stubs yet. Demote to warn so we still see
+# the noise without gating CI on systemic third-party stub gaps.
+unresolved-attribute = "warn"
+invalid-argument-type = "warn"

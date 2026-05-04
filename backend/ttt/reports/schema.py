@@ -9,9 +9,10 @@ dynamic pages are agent-rewritten every ingest.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Literal, cast, get_args
 
 PageKind = Literal["stable", "dynamic", "hidden", "report"]
+_PAGE_KINDS: tuple[str, ...] = get_args(PageKind)
 
 
 @dataclass(frozen=True)
@@ -115,8 +116,8 @@ def kinds_from_pages(pages: dict[str, str]) -> dict[str, PageKind]:
     for path, md in pages.items():
         fm, _ = parse_frontmatter(md)
         raw = str(fm.get("kind") or "").lower()
-        if raw in ("stable", "dynamic", "hidden", "report"):
-            out[path] = raw  # type: ignore[assignment]
+        if raw in _PAGE_KINDS:
+            out[path] = cast(PageKind, raw)
         else:
             out[path] = "stable"
     return out
@@ -236,8 +237,10 @@ def build_tree(pages: dict[str, str]) -> list[PageNode]:
         fm, _ = parse_frontmatter(md)
         spec = SPEC_BY_PATH.get(path)
         title = str(fm.get("title") or (spec.title if spec else _path_to_title(path)))
+        raw_kind = fm.get("kind")
         kind: PageKind = (
-            fm.get("kind") if fm.get("kind") in ("stable", "dynamic", "hidden", "report")  # type: ignore[assignment]
+            cast(PageKind, raw_kind)
+            if raw_kind in _PAGE_KINDS
             else (spec.kind if spec else "stable")
         )
         raw_order = fm.get("order")

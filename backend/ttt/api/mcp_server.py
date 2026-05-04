@@ -1,22 +1,20 @@
 """MCP server mounted on the FastAPI app.
 
-Exposes two tools to MCP clients (e.g. Claude Code):
-  ttt_list_projects  — list all projects with name + id
-  ttt_ask            — send a message to a project's chat agent; returns the response
+Exposes tools to MCP clients (e.g. Claude Code):
+  ttt_list_projects   — list all projects (typed: ProjectSummary)
+  ttt_create_project  — create a new project + kick off greenfield ingest
+  ttt_ask             — send a message to a project's chat agent
 
-Mount point: GET/POST /mcp  (SSE transport, auto-negotiated by FastMCP)
-Register in Claude Code settings:
-  {
-    "mcpServers": {
-      "ttt": { "type": "sse", "url": "http://localhost:8765/mcp/sse" }
-    }
-  }
+Mount point: GET/POST /mcp  (Streamable HTTP transport).
+
+All schemas are imported from `ttt.services.projects` so the MCP boundary
+binds to the same Pydantic models as the HTTP API.
 """
 
 from __future__ import annotations
 
-import asyncio
 import logging
+from typing import Any
 from uuid import UUID
 
 from mcp.server.fastmcp import FastMCP
@@ -25,31 +23,55 @@ from sqlmodel import Session, select
 from ttt.chat.agent import stream_chat
 from ttt.db import engine
 from ttt.models import ChatSession, Project, Report
+from ttt.services.projects import (
+    ProjectCreate,
+    ProjectSummary,
+    create_project_with_greenfield,
+    list_project_summaries,
+)
 
 log = logging.getLogger("ttt.mcp")
 
-mcp = FastMCP("ttt", instructions="Tools for querying Tiny Teams with Tokens project wikis.")
+mcp = FastMCP(
+    "ttt",
+    instructions="Tools for querying Tiny Teams with Tokens project wikis.",
+)
 
 
 @mcp.tool()
-def ttt_list_projects() -> list[dict]:
-    """List all TTT projects with their id, name, and latest report version."""
+def ttt_list_projects() -> list[ProjectSummary]:
+    """List all TTT projects with id, name, locked state, and latest report version."""
     with Session(engine) as session:
-        projects = session.exec(select(Project)).all()
-        out = []
-        for p in projects:
-            latest = session.exec(
-                select(Report)
-                .where(Report.project_id == p.id)
-                .order_by(Report.version.desc())
-            ).first()
-            out.append({
-                "id": str(p.id),
-                "name": p.name,
-                "latest_version": latest.version if latest else None,
-                "locked": p.locked,
-            })
-        return out
+        return list_project_summaries(session)
+
+
+@mcp.tool()
+def ttt_create_project(
+    name: str,
+    charter: str = "",
+    repos: list[str] | None = None,
+    confluence_roots: list[str] | None = None,
+    webex_channels: list[str] | None = None,
+    user_bindings: dict[str, Any] | None = None,
+    ingest_config: dict[str, Any] | None = None,
+) -> ProjectSummary:
+    """Create a new TTT project and kick off a greenfield ingest.
+
+    Args mirror `ProjectCreate`. The greenfield ingest runs in the background
+    against the configured repos; poll `ttt_list_projects` to watch the
+    `latest_version` field appear once the first ingest completes.
+    """
+    body = ProjectCreate(
+        name=name,
+        charter=charter,
+        repos=repos or [],
+        confluence_roots=confluence_roots or [],
+        webex_channels=webex_channels or [],
+        user_bindings=user_bindings or {},
+        ingest_config=ingest_config or {},
+    )
+    with Session(engine) as session:
+        return create_project_with_greenfield(session, body)
 
 
 @mcp.tool()
@@ -72,7 +94,6 @@ async def ttt_ask(project_id: str, question: str) -> str:
         project = session.get(Project, pid)
         if not project:
             return f"Error: project {project_id} not found"
-        # Grab existing sdk_session_id so we can resume the conversation thread.
         chat = session.exec(
             select(ChatSession).where(ChatSession.project_id == pid)
         ).first()
@@ -87,7 +108,6 @@ async def ttt_ask(project_id: str, question: str) -> str:
     if not latest:
         return "Error: no report exists for this project yet — run an ingest first."
 
-    # Collect the full streamed response.
     text_parts: list[str] = []
     error_msg: str | None = None
 
