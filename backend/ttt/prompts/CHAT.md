@@ -29,7 +29,6 @@ Pages can nest. Path is the only signal — `architecture/backend.md` becomes a 
 - Read any page (Read, Glob, Grep).
 - Edit / create pages (Edit, Write).
 - Call GitHub via the in-process MCP server: `mcp__github__github_list_commits`, `…_list_releases`, `…_list_issues`, `…_get_issue`, `…_list_pulls`, `…_get_pr`, `…_search_issues`, `…_get_codeowners`, `…_get_file`, `…_list_dir`, `…_get_readme`. Prefer these over WebFetch — they return structured data.
-- Read/update workspace relationships: `mcp__workspace__workspace_get_relationships`, `…_update_relationships`.
 - Fetch external context (WebFetch, WebSearch) for things outside GitHub.
 
 You CANNOT run shell commands; there is no Bash tool.

@@ -34,7 +34,11 @@ from ttt.models import (
 from ttt.config import settings
 from ttt import prompts
 from ttt.pipeline.agent_core import build_agent_options, build_citation_guidance
-from ttt.pipeline.wiki_steering import fetch_steering
+from ttt.pipeline.wiki_steering import (
+    RepoRelationships,
+    fetch_relationships,
+    fetch_steering,
+)
 from ttt.reports import repo as report_repo
 from ttt.reports import schema as report_schema
 
@@ -56,6 +60,17 @@ def _format_pages(specs: tuple[report_schema.PageSpec, ...]) -> str:
     return "\n".join(out)
 
 
+def _format_relationships(rel: RepoRelationships) -> str:
+    lines: list[str] = []
+    for kind in ("depends_on", "consumed_by", "supersedes", "related"):
+        items = rel.edges.get(kind)
+        if not items:
+            continue
+        joined = ", ".join(f"`{i}`" for i in items)
+        lines.append(f"  - **{kind}**: {joined}")
+    return "\n".join(lines)
+
+
 def _build_system_prompt(
     project: Project,
     is_greenfield: bool,
@@ -63,16 +78,29 @@ def _build_system_prompt(
     webex_rooms: list[WebexRoom],
     confluence_spaces: list[ConfluenceSpace],
     steering: list[tuple[str, str]] | None = None,
+    relationships: list[RepoRelationships] | None = None,
 ) -> str:
     top_level = _format_pages(report_schema.DEFAULT_PAGES)
+
+    rels_by_repo: dict[str, RepoRelationships] = {
+        rel.repo: rel for rel in (relationships or [])
+    }
 
     repo_blocks: list[str] = []
     for r in repos:
         expanded = report_schema.expand_template(
             f"repos/{r.slug}", report_schema.REPO_TEMPLATE
         )
+        rel_block = ""
+        rel = rels_by_repo.get(r.url)
+        if rel and not rel.is_empty:
+            rel_block = (
+                "\nMaintainer-declared relationships (from `.ttt/relationships.yaml`):\n"
+                + _format_relationships(rel)
+                + "\n"
+            )
         repo_blocks.append(
-            f"### Repo `{r.slug}` ({r.url})\n{_format_pages(expanded)}"
+            f"### Repo `{r.slug}` ({r.url})\n{_format_pages(expanded)}{rel_block}"
         )
     repos_section = (
         "\n\n".join(repo_blocks)
@@ -249,6 +277,9 @@ async def run_agent_ingest(
         repo_urls = [r.url for r in repos]
 
         steering = await fetch_steering(repo_urls, token=settings.github_token)
+        relationships = await fetch_relationships(
+            repo_urls, token=settings.github_token
+        )
 
         options = build_agent_options(
             project_id=project.id,
@@ -260,6 +291,7 @@ async def run_agent_ingest(
                 webex_rooms,
                 confluence_spaces,
                 steering,
+                relationships,
             ),
             model=INGEST_MODEL,
             max_turns=MAX_TURNS,
@@ -298,6 +330,16 @@ async def run_agent_ingest(
             _append_log(
                 run.id,
                 f"[{_now_iso()}] · confluence spaces: {', '.join(s.slug for s in confluence_spaces)} (connector not yet wired)",
+            )
+        for rel in relationships:
+            kinds_summary = ", ".join(
+                f"{kind}={len(rel.edges[kind])}"
+                for kind in rel.edges
+                if rel.edges[kind]
+            )
+            _append_log(
+                run.id,
+                f"[{_now_iso()}] · relationships from {rel.repo}/.ttt/relationships.yaml: {kinds_summary}",
             )
         if steering:
             for repo, body in steering:

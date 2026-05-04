@@ -166,14 +166,6 @@ export const api = {
       { method: "DELETE" },
     ),
 
-  getRelationships: () => req<WorkspaceDoc>("/api/workspace/relationships"),
-
-  putRelationships: (doc: WorkspaceDoc) =>
-    req<WorkspaceDoc>("/api/workspace/relationships", {
-      method: "PUT",
-      body: JSON.stringify(doc),
-    }),
-
   cancelIngest: (projectId: string) =>
     req<{ status: string }>(`/api/projects/${projectId}/ingest/cancel`, { method: "POST" }),
 
@@ -225,27 +217,3 @@ export type IngestRunDetail = {
   log: string;
 };
 
-export type RelationshipKind =
-  | "depends_on"
-  | "blocks"
-  | "shares_team"
-  | "supersedes";
-
-export type WorkspaceGroup = {
-  id: string;
-  name: string;
-  description: string;
-  projects: string[];
-};
-
-export type WorkspaceRelationship = {
-  from: string;
-  to: string;
-  kind: RelationshipKind;
-  note: string;
-};
-
-export type WorkspaceDoc = {
-  groups: WorkspaceGroup[];
-  relationships: WorkspaceRelationship[];
-};

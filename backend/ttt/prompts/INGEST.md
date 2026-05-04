@@ -74,6 +74,22 @@ order: <integer>
 
 Repos may include a `.ttt/wiki.md` at their root — llms.txt-style maintainer hints about what to emphasize, which files are canonical sources of truth, and what's out of scope for the wiki. When present, that file's contents are pre-injected into your context as a `REPO MAINTAINER STEERING` block below. Treat it as authoritative and follow any file paths it links to via `github_get_file` / `github_list_dir` to ground your writing in the real code.
 
+## Repo relationships (`.ttt/relationships.yaml`)
+
+Repos may also include a `.ttt/relationships.yaml` declaring cross-repo edges with four optional kinds:
+
+- `depends_on` — this repo calls / imports / requires those
+- `consumed_by` — those repos depend on this one
+- `supersedes` — this replaces an older repo
+- `related` — worth knowing about, not a hard edge
+
+When present, these are pre-injected per-repo in the system prompt as `Maintainer-declared relationships` blocks. Use them to ground:
+
+- The top-level `architecture.md` (cross-repo picture — reads as a real architecture diagram in prose, citing each edge)
+- The per-repo `architecture.md` and `repos/<slug>/overview.md` ("This repo depends on X for Y, is consumed by Z…")
+
+Cite the related repos as markdown links (`[owner/name](https://github.com/owner/name)`) so the renderer makes them clickable.
+
 ## Page body conventions
 
 - **`standup.md`** (top-level report card) — exact 4 H2 sections, in this order:
