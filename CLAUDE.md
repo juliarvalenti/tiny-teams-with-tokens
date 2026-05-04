@@ -83,7 +83,6 @@ In this order:
 - **Modern Python**: type hints, `X | Y` unions, `async/await` everywhere. `dataclasses` for value objects, `pydantic` for API schemas.
 - **No comments unless they explain WHY** something non-obvious is being done. Don't restate what the code does.
 - **No emojis** in code or commit messages.
-- **No README/docs files** unless explicitly requested. (`PLAN.md` and this file are explicit asks.)
 - **Frontend**: client components for anything that mounts editors / uses SWR. App Router, no Pages Router. shadcn primitives wrapped in domain components (e.g. `KindBadge` wraps `Badge` + `Tooltip`).
 
 ### Pipeline / agents
@@ -116,7 +115,8 @@ See [`PLAN.md`](./PLAN.md) §8 and the open GitHub issues. Top of the list right
 2. **Real Webex connector** (M7) — blocked on personal token + channel access.
 3. **Project interrelations + groups** (#9) → new home page (#3).
 4. **Onboarding validation** (#14) — validate gh repos / confluence / webex during create.
-5. **MCP server** exposing the wiki to other Claude Code sessions (M8).
+
+**MCP server (M8) — shipped.** The wiki chat agent is exposed as an MCP server at `/mcp` on the FastAPI app. Register it in `.mcp.json` (already committed). Two tools: `ttt_list_projects` and `ttt_ask`. Uses Streamable HTTP transport (not SSE) — FastMCP's `streamable_http_app()` mounted at `/` with `mcp.session_manager.run()` inside the FastAPI lifespan.
 
 If you (the agent) are picking this up cold, follow the "How to pick this up cold" checklist at the bottom of PLAN.md.
 

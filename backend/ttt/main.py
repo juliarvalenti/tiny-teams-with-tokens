@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from ttt.api import chat, projects, reports, workspace
+from ttt.api.mcp_server import mcp
 from ttt.db import init_db
 from ttt.reports.repo import init_store
 
@@ -12,7 +13,8 @@ from ttt.reports.repo import init_store
 async def lifespan(app: FastAPI):
     init_db()
     init_store()
-    yield
+    async with mcp.session_manager.run():
+        yield
 
 
 app = FastAPI(title="Tiny Teams with Tokens", lifespan=lifespan)
@@ -28,6 +30,8 @@ app.include_router(projects.router, prefix="/api")
 app.include_router(reports.router, prefix="/api")
 app.include_router(chat.router, prefix="/api")
 app.include_router(workspace.router, prefix="/api")
+
+app.mount("/", mcp.streamable_http_app())
 
 
 @app.get("/api/health")

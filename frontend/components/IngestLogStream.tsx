@@ -128,7 +128,7 @@ function FormattedLine({ raw }: { raw: string }) {
     "✗": "text-red-400",
     "→": "text-sky-400",
     "←": "text-neutral-300",
-    "▒": "text-amber-300",
+    "~": "text-amber-300",
     "✎": "text-violet-400",
     "·": "text-neutral-500",
   };

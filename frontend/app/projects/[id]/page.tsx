@@ -93,8 +93,21 @@ export default function ProjectDetailPage({
         </div>
         <div className="flex h-8 items-center gap-3">
           {data.locked ? (
-            <span className="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
-              ingest in progress…
+            <span className="flex items-center gap-2">
+              <span className="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                ingest in progress…
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-6 border-red-300 px-2 text-xs text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/40"
+                onClick={async () => {
+                  await api.cancelIngest(id);
+                  project.mutate();
+                }}
+              >
+                Stop
+              </Button>
             </span>
           ) : (
             <span className="text-xs text-neutral-500">v{data.latest_version ?? "—"}</span>

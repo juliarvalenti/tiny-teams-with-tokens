@@ -189,7 +189,9 @@ def build_agent_options(
         env={
             "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
             "ANTHROPIC_API_KEY": settings.anthropic_api_key,
+            **({"ANTHROPIC_BASE_URL": settings.anthropic_base_url} if settings.anthropic_base_url else {}),
         },
+        debug_stderr=True,
         include_partial_messages=include_partial_messages,
         max_turns=max_turns,
         hooks={

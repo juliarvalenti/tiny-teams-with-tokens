@@ -15,9 +15,9 @@ TTT splits each project into two kinds of pages:
 | **stable** | Written on greenfield ingest. Human-curated thereafter. Preserved across reingests. | The anchor: project purpose, active goals, glossary, architecture. |
 | **dynamic** | Rewritten on every reingest. Grounded by the stable pages. | Status, activity, conversations — measured against the stable goals. |
 
-The dynamic pages' synthesizers receive the stable pages as context. So "bumped litellm" gets filtered out unless an active goal mentions LLM cost; "v1.0.7rc1 released" survives if "ship v1.0" is in the goals. Signal becomes mechanical instead of vibes.
+The agent receives the stable pages as context when rewriting dynamic pages. So "bumped litellm" gets filtered out unless an active goal mentions LLM cost; "v1.0.7rc1 released" survives if "ship v1.0" is in the goals. Signal becomes mechanical instead of vibes.
 
-You edit any page in the browser (Milkdown WYSIWYG); commits land in a local bare git repo.
+You edit any page in the browser (Milkdown WYSIWYG); page revisions are stored in SQLite.
 
 ## Quickstart (Docker, prebuilt images from GHCR)
 
@@ -38,7 +38,7 @@ Images are published on every push to `main` to `ghcr.io/juliarvalenti/tiny-team
 
 To build locally instead of pulling: `docker compose build && docker compose up`.
 
-State (SQLite + report git repo) persists in a named volume (`ttt-data`). To wipe: `docker compose down -v`.
+State (SQLite + wiki cache) persists in a named volume (`ttt-data`). To wipe: `docker compose down -v`.
 
 ## Quickstart (local dev)
 
@@ -48,24 +48,19 @@ Requirements: Python 3.12+, [uv](https://github.com/astral-sh/uv), Node 20+, npm
 # 1. clone + install
 git clone https://github.com/juliarvalenti/tiny-teams-with-tokens
 cd tiny-teams-with-tokens
-uv sync --group dev
-(cd frontend && npm ci)
 
 # 2. environment
 cp .env.example .env
 # add ANTHROPIC_API_KEY to .env
-# (optional) add GITHUB_TOKEN for higher rate limits on the GitHub connector
+# (optional) add GITHUB_TOKEN for higher rate limits
 
-# 3. initialize local data (sqlite + bare git repo for reports)
-uv run ttt init-data
-
-# 4. boot
-uv run uvicorn ttt.main:app --port 8765   # backend
-(cd frontend && npm run dev -- -p 3001)   # frontend
-
-# 5. open
-open http://localhost:3001
+# 3. start everything
+bash up.sh
+# backend  → http://localhost:8765
+# frontend → http://localhost:3001
 ```
+
+`up.sh` installs deps, initializes the DB if missing, and starts both servers with hot reload.
 
 Click **New project**, give it a name, paste a charter (one paragraph: what the project is and what leadership cares about), point it at a GitHub repo, hit Create. First ingest takes ~15s; the wiki appears.
 
@@ -87,34 +82,54 @@ If the agent gets jargon wrong (it will — commit messages lie sometimes), edit
 ```
 backend/
 └── ttt/
-    ├── api/                 FastAPI routers (projects, reports/wiki pages)
-    ├── reports/
-    │   ├── repo.py          git ops (multi-file commits, page reads)
-    │   └── schema.py        page kinds, frontmatter, validation, sidebar tree
+    ├── api/
+    │   ├── projects.py      CRUD + ingest trigger + cancel
+    │   ├── chat.py          SSE chat endpoint
+    │   ├── reports.py       page read/write
+    │   ├── workspace.py     per-page workspace ops
+    │   └── mcp_server.py    MCP tools (ttt_list_projects, ttt_ask)
     ├── pipeline/
-    │   ├── runner.py        greenfield vs incremental orchestration
-    │   ├── extractors.py    per-source distillation (Haiku)
-    │   ├── connectors/      github (real, httpx) | confluence/webex (stubs)
-    │   ├── page_synthesizers/
-    │   │   ├── founding.py       writes the 4 stable pages on greenfield
-    │   │   ├── status.py         dynamic, grounded by overview/team/glossary
-    │   │   ├── activity.py       dynamic, grounded by overview/glossary
-    │   │   └── conversations.py  dynamic, grounded by overview/team
-    │   └── anthropic_client.py   thin wrapper, retry/backoff
-    ├── models.py            Project, Report, IngestRun
+    │   ├── agent_core.py    shared agent factory + persist hook
+    │   ├── agent_ingestor.py  ingest agent: system prompt, log streaming
+    │   └── mcp_github.py    in-process GitHub MCP (wraps httpx connector)
+    ├── chat/
+    │   └── agent.py         chat agent: system prompt, SSE event translation
+    ├── reports/
+    │   ├── repo.py          sqlite page store + FS cache mirror
+    │   └── schema.py        page kinds, frontmatter, sidebar tree
+    ├── models.py            Project, Report, IngestRun, ChatSession
     └── cli.py               `ttt init-data`
 
 frontend/
-├── app/                     Next.js App Router pages
+├── app/
+│   ├── page.tsx             project list / home
+│   └── projects/[id]/       wiki: sidebar + editor + chat panel
 └── components/
-    ├── WikiSidebar.tsx      path-derived tree, +new-page, kind badges
-    ├── ReportEditor.tsx     SWR-fetched page + Crepe edit/save
-    └── CrepeEditor.tsx      thin Milkdown wrapper
+    ├── IngestLogStream.tsx  live ingest log (SSE)
+    └── ProjectCard.tsx      card with age, delete
 
-data/                        gitignored — local sqlite + filesystem cache
+data/                        gitignored — sqlite DB + wiki FS cache
 ```
 
-Pages live in the `pagerevision` table — one row per save. The current state of any page is the latest revision; history is a query. A filesystem cache at `data/wiki/<project_id>/` mirrors the current pages so the chat agent's Read/Edit/Write tools work on real files; sqlite is the source of truth and the FS is regenerable.
+Pages live in the `pagerevision` table — one row per save. The current state of any page is the latest revision; history is a `SELECT … ORDER BY created_at DESC`. A filesystem cache at `data/wiki/<project_id>/` mirrors current pages so the agent's Read/Edit/Write tools operate on real files; sqlite is authoritative.
+
+## MCP server
+
+The wiki chat agent is exposed as an MCP server so other Claude Code sessions can query it directly.
+
+**Tools:**
+- `ttt_list_projects` — list all projects with id, name, and latest version
+- `ttt_ask(project_id, question)` — ask the chat agent a question; returns the full response
+
+**Setup:** `.mcp.json` is already committed. As long as the backend is running, Claude Code will connect automatically on session start.
+
+```json
+{
+  "mcpServers": {
+    "ttt": { "type": "http", "url": "http://localhost:8765/mcp" }
+  }
+}
+```
 
 ## Run tests
 
@@ -122,21 +137,20 @@ Pages live in the `pagerevision` table — one row per save. The current state o
 uv run pytest -x -q
 ```
 
-Tests force `ANTHROPIC_API_KEY=""` so the synthesizers fall through to deterministic stubs — they don't hit the real API and don't cost anything. Real-agent verification is manual via the UI.
+Tests force `ANTHROPIC_API_KEY=""` so the agents fall through to deterministic stubs — no API calls, no cost.
 
 ## What's stubbed / TODO
 
 - **Confluence connector** — needs base URL + creds. Currently reads `backend/ttt/fixtures/confluence.md`.
 - **Webex connector** — needs personal access token + channel access. Currently reads `backend/ttt/fixtures/webex.md`.
-- **MCP server** — exposing the wiki to other Claude Code sessions. Standalone process, not yet built. See plan.
-- **Citation links** — citations are markdown text right now (`[commit a1b2c3d]`); could resolve to clickable URLs once we have the canonical repo.
-- **Greenfield-only stable regen** — there's currently no "regenerate the anchor" button. If you want to refresh stable pages, edit them by hand or delete and reingest.
+- **Citation links** — citations are markdown text right now (`[commit a1b2c3d]`); could resolve to clickable URLs.
+- **Greenfield stable regen** — no "regenerate the anchor" button. Edit stable pages by hand or delete and reingest.
 
 ## Notes for sharing
 
 - The Anthropic API key in `.env` is yours and is gitignored — it never leaves your machine.
 - The lockfiles (`uv.lock`, `frontend/package-lock.json`) are committed; teammates should `uv sync` and `npm ci` to reproduce.
-- Cost: a full ingest cycle on a small public repo is roughly 7 LLM calls (3 extractors + founding + 3 dynamic page synthesizers), all on Haiku. Pennies per ingest.
+- Cost: a full ingest cycle on a small public repo runs the agent on Haiku. Pennies per ingest.
 
 ## License
 

@@ -8,6 +8,7 @@ import { ProjectCard } from "@/components/ProjectCard";
 import { RelationshipsPanel } from "@/components/RelationshipsPanel";
 import { Button } from "@/components/ui/button";
 import {
+  api,
   swrFetcher,
   type ProjectSummary,
   type WorkspaceDoc,
@@ -22,6 +23,11 @@ export default function Home() {
     swrFetcher,
   );
   const [editing, setEditing] = useState(false);
+
+  async function handleDelete(id: string) {
+    await api.deleteProject(id);
+    projects.mutate();
+  }
 
   const error = projects.error;
   const isLoading = projects.isLoading;
@@ -63,7 +69,7 @@ export default function Home() {
             No projects yet. Click <span className="font-mono">New project</span> to start.
           </p>
         ) : (
-          <GroupedProjects projects={projs} doc={doc} />
+          <GroupedProjects projects={projs} doc={doc} onDelete={handleDelete} />
         )
       )}
 
@@ -77,9 +83,11 @@ export default function Home() {
 function GroupedProjects({
   projects,
   doc,
+  onDelete,
 }: {
   projects: ProjectSummary[];
   doc: WorkspaceDoc | undefined;
+  onDelete: (id: string) => void;
 }) {
   const groups = doc?.groups ?? [];
   const rels = doc?.relationships ?? [];
@@ -131,7 +139,7 @@ function GroupedProjects({
             </header>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {gp.map((p) => (
-                <ProjectCard key={p.id} p={p} relations={neighborLabels(p.id)} />
+                <ProjectCard key={p.id} p={p} relations={neighborLabels(p.id)} onDelete={onDelete} />
               ))}
             </div>
           </section>

@@ -136,6 +136,12 @@ export const api = {
       body: JSON.stringify(doc),
     }),
 
+  cancelIngest: (projectId: string) =>
+    req<{ status: string }>(`/api/projects/${projectId}/ingest/cancel`, { method: "POST" }),
+
+  deleteProject: (projectId: string) =>
+    req<void>(`/api/projects/${projectId}`, { method: "DELETE" }),
+
   resetChat: (projectId: string) =>
     req<{ ok: boolean }>(`/api/projects/${projectId}/chat/reset`, { method: "POST" }),
 

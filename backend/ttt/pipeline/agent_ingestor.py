@@ -28,13 +28,14 @@ from sqlmodel import Session, select
 
 from ttt.db import engine
 from ttt.models import IngestRun, Project, Report
+from ttt.config import settings
 from ttt.pipeline.agent_core import build_agent_options, build_citation_guidance
 from ttt.reports import repo as report_repo
 from ttt.reports import schema as report_schema
 
 log = logging.getLogger("ttt.pipeline.agent")
 
-INGEST_MODEL = "claude-haiku-4-5"
+INGEST_MODEL = settings.ingest_model
 MAX_TURNS = 60
 
 
@@ -254,7 +255,7 @@ async def run_agent_ingest(
                         if text:
                             for line in text.splitlines():
                                 if line.strip():
-                                    _append_log(run.id, f"[{_now_iso()}] ▒ {line}")
+                                    _append_log(run.id, f"[{_now_iso()}] ~ {line}")
             elif isinstance(message, UserMessage):
                 # Tool results — note the tool returned, no need to dump bodies.
                 for block in getattr(message, "content", []) or []:

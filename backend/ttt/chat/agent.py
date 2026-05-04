@@ -29,12 +29,13 @@ from claude_agent_sdk import (
 from claude_agent_sdk.types import StreamEvent
 
 from ttt.models import Project
+from ttt.config import settings
 from ttt.pipeline.agent_core import build_agent_options, build_citation_guidance
 from ttt.reports import schema as report_schema
 
 log = logging.getLogger("ttt.chat")
 
-CHAT_MODEL = "claude-sonnet-4-6"
+CHAT_MODEL = settings.chat_model
 MAX_TURNS = 20
 
 

@@ -1,5 +1,7 @@
 import asyncio
-from datetime import datetime
+import shutil
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
@@ -8,7 +10,7 @@ from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from ttt.db import get_session
-from ttt.models import IngestRun, Project, Report
+from ttt.models import ChatMessage, ChatSession, IngestRun, PageRevision, Project, Report
 from ttt.pipeline.runner import dispatch_ingest
 
 router = APIRouter(tags=["projects"])
@@ -175,6 +177,52 @@ def list_ingests(
         }
         for r in runs
     ]
+
+
+@router.post("/projects/{project_id}/ingest/cancel")
+def cancel_ingest(
+    project_id: UUID, session: Session = Depends(get_session)
+) -> dict[str, str]:
+    project = session.get(Project, project_id)
+    if not project:
+        raise HTTPException(404, "project not found")
+    if not project.locked:
+        raise HTTPException(409, "no ingest in progress")
+    run = session.exec(
+        select(IngestRun)
+        .where(IngestRun.project_id == project_id)
+        .order_by(IngestRun.started_at.desc())
+    ).first()
+    if run and run.status in ("pending", "running"):
+        run.status = "failed"
+        run.error = "cancelled by user"
+        run.finished_at = datetime.now(timezone.utc)
+        session.add(run)
+    project.locked = False
+    session.add(project)
+    session.commit()
+    return {"status": "cancelled"}
+
+
+@router.delete("/projects/{project_id}", status_code=204)
+def delete_project(project_id: UUID, session: Session = Depends(get_session)) -> None:
+    project = session.get(Project, project_id)
+    if not project:
+        raise HTTPException(404, "project not found")
+    if project.locked:
+        raise HTTPException(409, "project is locked while ingest is running")
+
+    for model in (ChatMessage, ChatSession, PageRevision, IngestRun, Report):
+        rows = session.exec(select(model).where(model.project_id == project_id)).all()
+        for row in rows:
+            session.delete(row)
+
+    session.delete(project)
+    session.commit()
+
+    wiki_dir = Path("data/wiki") / str(project_id)
+    if wiki_dir.exists():
+        shutil.rmtree(wiki_dir)
 
 
 @router.get("/ingest/{run_id}")
