@@ -62,11 +62,14 @@ export async function req<T>(path: string, init?: RequestInit): Promise<T> {
 export const swrFetcher = <T>(path: string) => req<T>(path);
 
 export type PageKind = "stable" | "dynamic" | "hidden" | "report";
+// `folder` is a sidebar-only marker for synthesized non-clickable headers
+// (when nested children exist without a real `<dir>.md` parent page).
+export type NodeKind = PageKind | "folder";
 
 export type PageNode = {
   path: string;
   title: string;
-  kind: PageKind;
+  kind: NodeKind;
   order: number;
   children: PageNode[];
 };

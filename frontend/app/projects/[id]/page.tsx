@@ -163,7 +163,7 @@ export default function ProjectDetailPage({
               version={version}
               pagePath={activeNode.path}
               pageTitle={activeNode.title}
-              pageKind={activeNode.kind}
+              pageKind={activeNode.kind as Exclude<typeof activeNode.kind, "folder">}
               locked={data.locked}
             />
           ) : version == null ? (
@@ -212,7 +212,9 @@ export default function ProjectDetailPage({
 function flattenTree(tree: PageNode[]): PageNode[] {
   const out: PageNode[] = [];
   const visit = (n: PageNode) => {
-    out.push(n);
+    // Synthetic folder headers aren't selectable, so they don't belong in
+    // the flat lookup list the editor uses.
+    if (n.kind !== "folder") out.push(n);
     n.children.forEach(visit);
   };
   tree.forEach(visit);

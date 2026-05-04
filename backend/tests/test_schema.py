@@ -126,10 +126,10 @@ def test_build_tree_handles_nesting() -> None:
     assert any(c.path == "architecture/design.md" for c in arch.children)
 
 
-def test_build_tree_handles_per_repo_subtree() -> None:
-    """Per-source subtrees nest correctly: `repos/mycelium/overview.md` should
-    appear under `repos/mycelium.md`. Without a parent `.md`, it's a root
-    orphan — that's expected and not a bug."""
+def test_build_tree_handles_per_repo_subtree_with_real_anchor() -> None:
+    """Per-source subtrees with a real `<dir>.md` anchor: the anchor lives
+    inside a synthetic `repos` folder header (since `repos.md` doesn't
+    exist), and its children nest under it as usual."""
     pages = {
         "repos/mycelium.md": "---\ntitle: mycelium\nkind: dynamic\norder: 0\n---\nbody",
         "repos/mycelium/overview.md": (
@@ -138,6 +138,32 @@ def test_build_tree_handles_per_repo_subtree() -> None:
     }
     tree = schema.build_tree(pages)
     by_path = {n.path: n for n in tree}
-    assert "repos/mycelium.md" in by_path
-    parent = by_path["repos/mycelium.md"]
-    assert any(c.path == "repos/mycelium/overview.md" for c in parent.children)
+    assert "repos" in by_path, "synthetic folder header missing"
+    folder = by_path["repos"]
+    assert folder.kind == "folder"
+    anchor = next(c for c in folder.children if c.path == "repos/mycelium.md")
+    assert any(c.path == "repos/mycelium/overview.md" for c in anchor.children)
+
+
+def test_build_tree_synthesizes_folder_for_orphan_subtree() -> None:
+    """When per-repo pages exist but no `repos/<slug>.md` anchor was written,
+    a synthetic folder node groups them in the sidebar instead of leaving
+    them as flat root orphans."""
+    pages = {
+        "overview.md": "---\ntitle: Overview\nkind: dynamic\norder: 0\n---\nbody",
+        "repos/mycelium/overview.md": "---\ntitle: Overview\nkind: dynamic\norder: 0\n---\nbody",
+        "repos/mycelium/team.md": "---\ntitle: Team\nkind: dynamic\norder: 1\n---\nbody",
+    }
+    tree = schema.build_tree(pages)
+    by_path = {n.path: n for n in tree}
+    assert "overview.md" in by_path
+    assert "repos" in by_path
+    repos_folder = by_path["repos"]
+    assert repos_folder.kind == "folder"
+    # `repos.md` doesn't exist, so children of `repos/mycelium/...` need a
+    # `repos/mycelium` synthetic folder under the `repos` folder.
+    mycelium_folder = next(c for c in repos_folder.children if c.path == "repos/mycelium")
+    assert mycelium_folder.kind == "folder"
+    child_paths = {c.path for c in mycelium_folder.children}
+    assert "repos/mycelium/overview.md" in child_paths
+    assert "repos/mycelium/team.md" in child_paths

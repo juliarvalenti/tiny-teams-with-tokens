@@ -13,6 +13,9 @@ from typing import Literal, cast, get_args
 
 PageKind = Literal["stable", "dynamic", "hidden", "report"]
 _PAGE_KINDS: tuple[str, ...] = get_args(PageKind)
+# Sidebar-only marker: a synthetic non-clickable folder header rendered when
+# nested children exist without a real `<dir>.md` parent page.
+NodeKind = Literal["stable", "dynamic", "hidden", "report", "folder"]
 
 
 @dataclass(frozen=True)
@@ -258,7 +261,7 @@ def _dump(v: object) -> str:
 class PageNode:
     path: str
     title: str
-    kind: PageKind
+    kind: NodeKind
     order: int
     children: list["PageNode"] = field(default_factory=list)
 
@@ -269,6 +272,12 @@ def build_tree(pages: dict[str, str]) -> list[PageNode]:
     `kind: report` pages (e.g. `standup.md`) are excluded — they have their own
     UI surface, not a sidebar entry. `kind: hidden` pages ARE included; the
     frontend chooses whether to render them (cmd-shift-. style toggle).
+
+    When a nested page like `repos/mycelium/overview.md` has no real
+    `repos/mycelium.md` parent, this function synthesizes a non-clickable
+    `kind: folder` node at `repos/mycelium` so the sidebar still nests it
+    properly. Folder nodes have `path` without `.md` to distinguish them
+    from real pages — the frontend treats them as headers.
     """
     nodes: dict[str, PageNode] = {}
     for path, md in pages.items():
@@ -281,8 +290,8 @@ def build_tree(pages: dict[str, str]) -> list[PageNode]:
         spec = SPEC_BY_PATH.get(path)
         title = str(fm.get("title") or (spec.title if spec else _path_to_title(path)))
         raw_kind = fm.get("kind")
-        kind: PageKind = (
-            cast(PageKind, raw_kind)
+        kind: NodeKind = (
+            cast(NodeKind, raw_kind)
             if raw_kind in _PAGE_KINDS
             else (spec.kind if spec else "stable")
         )
@@ -290,11 +299,35 @@ def build_tree(pages: dict[str, str]) -> list[PageNode]:
         order = raw_order if isinstance(raw_order, int) else (spec.order if spec else 999)
         nodes[path] = PageNode(path=path, title=title, kind=kind, order=order)
 
+    # First pass: synthesize folder nodes for any nested page whose ancestor
+    # `<dir>.md` doesn't exist as a real page. Walk every dir component in
+    # every nested page's path; ensure each missing ancestor has a folder node.
+    folders: dict[str, PageNode] = {}
+    for path in list(nodes.keys()):
+        if "/" not in path:
+            continue
+        parts = path.split("/")[:-1]  # drop the leaf .md
+        for i in range(1, len(parts) + 1):
+            dir_path = "/".join(parts[:i])
+            page_anchor = f"{dir_path}.md"
+            if page_anchor in nodes or dir_path in folders:
+                continue
+            folders[dir_path] = PageNode(
+                path=dir_path,
+                title=_path_to_title(dir_path),
+                kind="folder",
+                order=999,
+            )
+
     roots: list[PageNode] = []
-    for path, node in sorted(nodes.items(), key=lambda kv: (_depth(kv[0]), nodes[kv[0]].order, kv[0])):
-        parent_path = _parent_path(path)
-        if parent_path and parent_path in nodes:
-            nodes[parent_path].children.append(node)
+    all_nodes: dict[str, PageNode] = {**nodes, **folders}
+
+    for path, node in sorted(
+        all_nodes.items(), key=lambda kv: (_depth_for_node(kv[0]), all_nodes[kv[0]].order, kv[0])
+    ):
+        parent = _resolve_parent(path, all_nodes)
+        if parent is not None:
+            parent.children.append(node)
         else:
             roots.append(node)
 
@@ -306,18 +339,25 @@ def build_tree(pages: dict[str, str]) -> list[PageNode]:
     return roots
 
 
+def _resolve_parent(path: str, all_nodes: dict[str, PageNode]) -> PageNode | None:
+    """Walk up the path looking for the nearest existing parent — either a
+    real `<dir>.md` page or a synthesized folder at `<dir>`."""
+    if "/" not in path:
+        return None
+    leaf = path.rsplit("/", 1)[0]
+    page_parent = f"{leaf}.md"
+    if page_parent in all_nodes:
+        return all_nodes[page_parent]
+    if leaf in all_nodes:
+        return all_nodes[leaf]
+    return None
+
+
+def _depth_for_node(path: str) -> int:
+    """Sort key — folder paths (no `.md`) and page paths share depth by slash count."""
+    return path.count("/")
+
+
 def _path_to_title(path: str) -> str:
     leaf = path.rsplit("/", 1)[-1].removesuffix(".md")
     return leaf.replace("-", " ").replace("_", " ").title()
-
-
-def _parent_path(path: str) -> str | None:
-    """`architecture/design.md` → `architecture.md`. Top-level → None."""
-    if "/" not in path:
-        return None
-    parent_dir = path.rsplit("/", 1)[0]
-    return f"{parent_dir}.md"
-
-
-def _depth(path: str) -> int:
-    return path.count("/")
