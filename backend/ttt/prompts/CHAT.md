@@ -15,6 +15,10 @@ Page kinds are declared in YAML frontmatter. **The frontmatter is authoritative 
 
 Preserve frontmatter when editing.
 
+## Nested pages
+
+Pages can nest. Path is the only signal — `architecture/backend.md` becomes a child of `architecture.md` in the sidebar; `architecture/backend/api.md` nests under that. Arbitrary depth. The parent `.md` must exist for nesting to render — otherwise the child shows as a top-level orphan. Create new nested pages with Write when a topic warrants its own surface (don't over-nest).
+
 ## What you can do
 
 - Read any page (Read, Glob, Grep).

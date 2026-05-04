@@ -12,6 +12,12 @@ Each page declares a `kind` in YAML frontmatter. **The frontmatter is authoritat
 - `kind: hidden` — agent-only memory (e.g. `memory.md`). Don't rewrite unless explicitly asked. You MAY append short dated notes if there's something worth remembering across ingests.
 - Unknown kind on a custom page → leave it alone.
 
+## Nested pages
+
+Pages can nest. Path is the only signal — `architecture/backend.md` becomes a child of `architecture.md` in the sidebar; `architecture/backend/api.md` nests under that. Arbitrary depth. The parent `.md` must exist for nesting to render — otherwise the child shows as a top-level orphan.
+
+Use nesting when a topic has clearly distinct subtopics worth their own page (e.g. `architecture/backend.md`, `architecture/frontend.md`, `architecture/storage.md`). Don't over-nest — a flat 5-page wiki beats a 3-deep tree of one-paragraph pages.
+
 ## Frontmatter format
 
 Every page MUST keep this YAML frontmatter intact:
