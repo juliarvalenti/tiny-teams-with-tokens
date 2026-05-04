@@ -14,8 +14,8 @@ import {
 } from "@/components/ui/dialog";
 import {
   ProjectFormFields,
-  projectFormValuesFromArrays,
-  projectFormValuesToArrays,
+  projectFormValuesFromProject,
+  projectFormValuesToSubmit,
   type ProjectFormValues,
 } from "./ProjectFormFields";
 
@@ -28,7 +28,7 @@ export function EditProjectModal({
 }) {
   const { mutate } = useSWRConfig();
   const [values, setValues] = useState<ProjectFormValues>(() =>
-    projectFormValuesFromArrays(project),
+    projectFormValuesFromProject(project),
   );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,7 +38,14 @@ export function EditProjectModal({
     setSubmitting(true);
     setError(null);
     try {
-      await api.updateProject(project.id, projectFormValuesToArrays(values));
+      const submit = projectFormValuesToSubmit(values);
+      // Edit doesn't allow changing repos here yet — those need their own
+      // sources panel since they're now first-class entities, not a JSON list.
+      await api.updateProject(project.id, {
+        charter: submit.charter,
+        phase: submit.phase,
+        cadence: submit.cadence,
+      });
       mutate(`/api/projects/${project.id}`);
       mutate("/api/projects");
       onClose();
@@ -60,7 +67,12 @@ export function EditProjectModal({
           </DialogHeader>
 
           <div className="my-5">
-            <ProjectFormFields values={values} onChange={setValues} compact />
+            <ProjectFormFields
+              values={values}
+              onChange={setValues}
+              compact
+              showRepos={false}
+            />
           </div>
 
           {project.locked && (

@@ -1,11 +1,7 @@
-"""Agent-based ingest — replaces the static fan-out pipeline with a Claude
-Agent SDK loop. The agent has the wiki on disk (Read/Edit/Write/Glob/Grep)
-plus an in-process GitHub MCP server. It walks the page schema, decides
-what to fetch, and writes pages directly.
-
-Feature-flagged via `settings.ingest_mode = "agent"`. The static path in
-`runner.py` stays as the default until this is trusted.
-"""
+"""Agent-based ingest — the only ingest path. A Claude Agent SDK loop with
+the wiki on disk (Read/Edit/Write/Glob/Grep), an in-process GitHub MCP
+server scoped to the project's Repos, plus stub subtrees for any attached
+WebexRooms / ConfluenceSpaces (the connectors aren't built yet)."""
 
 from __future__ import annotations
 
@@ -27,11 +23,22 @@ from claude_agent_sdk import (
 from sqlmodel import Session, select
 
 from ttt.db import engine
-from ttt.models import IngestRun, Project, Report
+from ttt.models import (
+    ConfluenceSpace,
+    IngestRun,
+    Project,
+    Repo,
+    Report,
+    WebexRoom,
+)
 from ttt.config import settings
 from ttt import prompts
 from ttt.pipeline.agent_core import build_agent_options, build_citation_guidance
-from ttt.pipeline.wiki_steering import fetch_steering
+from ttt.pipeline.wiki_steering import (
+    RepoRelationships,
+    fetch_relationships,
+    fetch_steering,
+)
 from ttt.reports import repo as report_repo
 from ttt.reports import schema as report_schema
 
@@ -41,22 +48,94 @@ INGEST_MODEL = settings.ingest_model
 MAX_TURNS = 60
 
 
-def _build_system_prompt(
-    project: Project,
-    is_greenfield: bool,
-    repos: list[str],
-    steering: list[tuple[str, str]] | None = None,
-) -> str:
-    page_lines: list[str] = []
-    for spec in report_schema.DEFAULT_PAGES:
+def _format_pages(specs: tuple[report_schema.PageSpec, ...]) -> str:
+    out: list[str] = []
+    for spec in specs:
         grounded = (
             f" — grounded by: {', '.join(spec.grounded_by)}"
             if spec.grounded_by
             else ""
         )
-        page_lines.append(
-            f"  - `{spec.path}` ({spec.kind}) — {spec.title}{grounded}"
+        out.append(f"  - `{spec.path}` ({spec.kind}) — {spec.title}{grounded}")
+    return "\n".join(out)
+
+
+def _format_relationships(rel: RepoRelationships) -> str:
+    lines: list[str] = []
+    for kind in ("depends_on", "consumed_by", "supersedes", "related"):
+        items = rel.edges.get(kind)
+        if not items:
+            continue
+        joined = ", ".join(f"`{i}`" for i in items)
+        lines.append(f"  - **{kind}**: {joined}")
+    return "\n".join(lines)
+
+
+def _build_system_prompt(
+    project: Project,
+    is_greenfield: bool,
+    repos: list[Repo],
+    webex_rooms: list[WebexRoom],
+    confluence_spaces: list[ConfluenceSpace],
+    steering: list[tuple[str, str]] | None = None,
+    relationships: list[RepoRelationships] | None = None,
+) -> str:
+    top_level = _format_pages(report_schema.DEFAULT_PAGES)
+
+    rels_by_repo: dict[str, RepoRelationships] = {
+        rel.repo: rel for rel in (relationships or [])
+    }
+
+    repo_blocks: list[str] = []
+    for r in repos:
+        expanded = report_schema.expand_template(
+            f"repos/{r.slug}", report_schema.REPO_TEMPLATE
         )
+        rel_block = ""
+        rel = rels_by_repo.get(r.url)
+        if rel and not rel.is_empty:
+            rel_block = (
+                "\nMaintainer-declared relationships (from `.ttt/relationships.yaml`):\n"
+                + _format_relationships(rel)
+                + "\n"
+            )
+        repo_blocks.append(
+            f"### Repo `{r.slug}` ({r.url})\n{_format_pages(expanded)}{rel_block}"
+        )
+    repos_section = (
+        "\n\n".join(repo_blocks)
+        if repo_blocks
+        else "(no repos attached — top-level pages only)"
+    )
+
+    webex_blocks: list[str] = []
+    for room in webex_rooms:
+        expanded = report_schema.expand_template(
+            f"webex/{room.slug}", report_schema.WEBEX_TEMPLATE
+        )
+        webex_blocks.append(
+            f"### Webex room `{room.slug}` ({room.name})\n{_format_pages(expanded)}"
+        )
+    webex_section = (
+        "\n\n".join(webex_blocks)
+        if webex_blocks
+        else "(no Webex rooms attached — connector also not yet wired)"
+    )
+
+    confluence_blocks: list[str] = []
+    for space in confluence_spaces:
+        expanded = report_schema.expand_template(
+            f"confluence/{space.slug}", report_schema.CONFLUENCE_TEMPLATE
+        )
+        confluence_blocks.append(
+            f"### Confluence space `{space.slug}` ({space.name}, key={space.space_key})\n"
+            + _format_pages(expanded)
+        )
+    confluence_section = (
+        "\n\n".join(confluence_blocks)
+        if confluence_blocks
+        else "(no Confluence spaces attached — connector also not yet wired)"
+    )
 
     steering_block = ""
     if steering:
@@ -82,24 +161,35 @@ def _build_system_prompt(
         )
     )
 
-    repos_block = (
-        f"GITHUB REPOS: {', '.join(repos)}" if repos else "GITHUB REPOS: (none configured)"
-    )
+    phase = project.phase or "(unset)"
+    cadence = project.cadence or "(unset)"
+    repo_urls = [r.url for r in repos]
 
     project_block = f"""PROJECT: "{project.name}"
+phase: {phase}    cadence: {cadence}
 
 PROJECT CHARTER (seed context, may be empty):
 {project.charter or "(empty)"}
 
-{steering_block}{repos_block}
+{steering_block}TOP-LEVEL PAGES (cross-cutting across all sources):
 
-PAGE STRUCTURE — these pages exist or should be created:
+{top_level}
 
-{chr(10).join(page_lines)}
+PER-REPO SUBTREES (each repo gets its own folder under `repos/`):
+
+{repos_section}
+
+PER-WEBEX-ROOM SUBTREES (each room under `webex/`):
+
+{webex_section}
+
+PER-CONFLUENCE-SPACE SUBTREES (each space under `confluence/`):
+
+{confluence_section}
 
 {mode_block}
 
-{build_citation_guidance(project.repos)}"""
+{build_citation_guidance(repo_urls)}"""
 
     return f"{prompts.load('INGEST')}\n\n---\n\n{project_block}"
 
@@ -175,13 +265,33 @@ async def run_agent_ingest(
         session.commit()
         session.refresh(report)
 
-        steering = await fetch_steering(project.repos, token=settings.github_token)
+        repos = list(session.exec(select(Repo).where(Repo.project_id == project.id)).all())
+        webex_rooms = list(
+            session.exec(select(WebexRoom).where(WebexRoom.project_id == project.id)).all()
+        )
+        confluence_spaces = list(
+            session.exec(
+                select(ConfluenceSpace).where(ConfluenceSpace.project_id == project.id)
+            ).all()
+        )
+        repo_urls = [r.url for r in repos]
+
+        steering = await fetch_steering(repo_urls, token=settings.github_token)
+        relationships = await fetch_relationships(
+            repo_urls, token=settings.github_token
+        )
 
         options = build_agent_options(
             project_id=project.id,
-            project_repos=project.repos,
+            project_repos=repo_urls,
             system_prompt=_build_system_prompt(
-                project, is_greenfield, project.repos, steering
+                project,
+                is_greenfield,
+                repos,
+                webex_rooms,
+                confluence_spaces,
+                steering,
+                relationships,
             ),
             model=INGEST_MODEL,
             max_turns=MAX_TURNS,
@@ -209,7 +319,28 @@ async def run_agent_ingest(
             f"[{_now_iso()}] ▶ agent ingest started "
             f"(mode={'greenfield' if is_greenfield else 'incremental'}, model={INGEST_MODEL})",
         )
-        _append_log(run.id, f"[{_now_iso()}] · repos: {', '.join(project.repos) or '(none)'}")
+        repos_label = ", ".join(f"{r.slug} ({r.url})" for r in repos) or "(none)"
+        _append_log(run.id, f"[{_now_iso()}] · repos: {repos_label}")
+        if webex_rooms:
+            _append_log(
+                run.id,
+                f"[{_now_iso()}] · webex rooms: {', '.join(r.slug for r in webex_rooms)} (connector not yet wired)",
+            )
+        if confluence_spaces:
+            _append_log(
+                run.id,
+                f"[{_now_iso()}] · confluence spaces: {', '.join(s.slug for s in confluence_spaces)} (connector not yet wired)",
+            )
+        for rel in relationships:
+            kinds_summary = ", ".join(
+                f"{kind}={len(rel.edges[kind])}"
+                for kind in rel.edges
+                if rel.edges[kind]
+            )
+            _append_log(
+                run.id,
+                f"[{_now_iso()}] · relationships from {rel.repo}/.ttt/relationships.yaml: {kinds_summary}",
+            )
         if steering:
             for repo, body in steering:
                 _append_log(

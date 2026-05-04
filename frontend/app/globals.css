@@ -85,8 +85,11 @@ body {
 }
 .milkdown-host .milkdown .ProseMirror ul { list-style: disc; }
 .milkdown-host .milkdown .ProseMirror ol { list-style: decimal; }
-.milkdown-host .milkdown .ProseMirror li > p {
-  margin: 0.2em 0;
+/* The <p> inside a list item lives under Crepe's intermediary
+ * `<div class="children"><div class="content-dom">…</div></div>` wrappers,
+ * so the obvious `li > p` selector misses. Reach down through them. */
+.milkdown-host .milkdown .ProseMirror li.list-item .children > .content-dom > p {
+  margin: 0;
 }
 
 /* Crepe wraps each <li> in <div class="milkdown-list-item-block"> and emits
@@ -104,7 +107,7 @@ body {
 .milkdown-host .milkdown .ProseMirror li.list-item {
   display: list-item;
   padding: 0;
-  margin: 0.2em 0;
+  margin: 0;
 }
 .milkdown-host .milkdown .ProseMirror li.list-item > .label-wrapper {
   display: none;
@@ -194,16 +197,8 @@ body {
   margin: 0.4em 0;
   padding-left: 0.5rem;
 }
-/* Standup/chat just inherit the base list rendering — only override list
- * margin if you want even tighter spacing. */
-.standup-section-body .milkdown-host .milkdown .ProseMirror li.list-item,
-.chat-md-body .milkdown-host .milkdown .ProseMirror li.list-item {
-  margin: 0.15em 0;
-}
-.standup-section-body .milkdown-host .milkdown .ProseMirror li.list-item .children > .content-dom > p,
-.chat-md-body .milkdown-host .milkdown .ProseMirror li.list-item .children > .content-dom > p {
-  margin: 0.15em 0;
-}
+/* Standup/chat inherit the base list rendering — global rules already
+ * collapse li and inner-p margins to 0. No further overrides needed. */
 
 /* Wrap long markdown lines in the diff viewer instead of horizontal-scrolling.
  * react-diff-viewer-continued doesn't expose a wrapLines prop, so we override

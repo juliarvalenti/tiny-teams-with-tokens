@@ -11,15 +11,58 @@ def _utcnow() -> datetime:
 
 
 class Project(SQLModel, table=True):
+    """A strategic effort that owns a wiki and a set of sources (Repos,
+    WebexRooms, ConfluenceSpaces). The wiki has cross-cutting top-level pages
+    (overview, product, architecture, marketing, conversations, standup) plus
+    per-source subtrees (`repos/<slug>/...`, `webex/<slug>/...`,
+    `confluence/<slug>/...`)."""
+
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     name: str
     charter: str = ""
-    repos: list[str] = Field(default_factory=list, sa_column=Column(JSON))
-    confluence_roots: list[str] = Field(default_factory=list, sa_column=Column(JSON))
-    webex_channels: list[str] = Field(default_factory=list, sa_column=Column(JSON))
+    phase: str | None = None  # prototype | venture | active | sunset
+    cadence: str | None = None  # weekly | monthly | quiet
     user_bindings: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     ingest_config: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     locked: bool = False
+    created_at: datetime = Field(default_factory=_utcnow)
+
+
+class Repo(SQLModel, table=True):
+    """A GitHub repo attached to a Project. Slug is the short name used in
+    page paths (`repos/<slug>/...`) — defaults to the repo's last path
+    segment, user can override on collision."""
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    project_id: UUID = Field(foreign_key="project.id", index=True)
+    slug: str = Field(index=True)
+    url: str  # canonical "owner/name" or full https URL
+    default_branch: str = "main"
+    created_at: datetime = Field(default_factory=_utcnow)
+
+
+class WebexRoom(SQLModel, table=True):
+    """A Webex room attached to a Project. Synthesized into
+    `webex/<slug>/...` pages."""
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    project_id: UUID = Field(foreign_key="project.id", index=True)
+    slug: str = Field(index=True)
+    name: str  # display name, e.g. "IoC::Mycelium::SRE"
+    webex_id: str | None = None  # populated when we wire the connector
+    created_at: datetime = Field(default_factory=_utcnow)
+
+
+class ConfluenceSpace(SQLModel, table=True):
+    """A Confluence space attached to a Project. Synthesized into
+    `confluence/<slug>/...` pages."""
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    project_id: UUID = Field(foreign_key="project.id", index=True)
+    slug: str = Field(index=True)
+    name: str
+    space_key: str  # e.g. "IOC"
+    base_url: str = ""  # e.g. "https://example.atlassian.net/wiki"
     created_at: datetime = Field(default_factory=_utcnow)
 
 

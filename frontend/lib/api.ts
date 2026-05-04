@@ -3,16 +3,46 @@ export type ProjectSummary = {
   name: string;
   locked: boolean;
   created_at: string;
+  phase: string | null;
+  cadence: string | null;
+  repo_count: number;
+  webex_room_count: number;
+  confluence_space_count: number;
   latest_version: number | null;
   latest_ingested_at: string | null;
 };
 
+export type RepoOut = {
+  id: string;
+  project_id: string;
+  slug: string;
+  url: string;
+  default_branch: string;
+};
+
+export type WebexRoomOut = {
+  id: string;
+  project_id: string;
+  slug: string;
+  name: string;
+  webex_id: string | null;
+};
+
+export type ConfluenceSpaceOut = {
+  id: string;
+  project_id: string;
+  slug: string;
+  name: string;
+  space_key: string;
+  base_url: string;
+};
+
 export type ProjectDetail = ProjectSummary & {
   charter: string;
-  repos: string[];
-  confluence_roots: string[];
-  webex_channels: string[];
   ingest_config: Record<string, unknown>;
+  repos: RepoOut[];
+  webex_rooms: WebexRoomOut[];
+  confluence_spaces: ConfluenceSpaceOut[];
   latest_run_id: string | null;
 };
 
@@ -32,11 +62,14 @@ export async function req<T>(path: string, init?: RequestInit): Promise<T> {
 export const swrFetcher = <T>(path: string) => req<T>(path);
 
 export type PageKind = "stable" | "dynamic" | "hidden" | "report";
+// `folder` is a sidebar-only marker for synthesized non-clickable headers
+// (when nested children exist without a real `<dir>.md` parent page).
+export type NodeKind = PageKind | "folder";
 
 export type PageNode = {
   path: string;
   title: string;
-  kind: PageKind;
+  kind: NodeKind;
   order: number;
   children: PageNode[];
 };
@@ -65,22 +98,27 @@ export const api = {
   createProject: (body: {
     name: string;
     charter?: string;
+    phase?: string | null;
+    cadence?: string | null;
     repos?: string[];
-    confluence_roots?: string[];
-    webex_channels?: string[];
   }) => req<ProjectSummary>("/api/projects", { method: "POST", body: JSON.stringify(body) }),
 
   updateProject: (
     id: string,
     body: {
       charter?: string;
-      repos?: string[];
-      confluence_roots?: string[];
-      webex_channels?: string[];
+      phase?: string | null;
+      cadence?: string | null;
     },
   ) =>
     req<ProjectSummary>(`/api/projects/${id}`, {
       method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
+  addRepo: (projectId: string, body: { url: string; slug?: string; default_branch?: string }) =>
+    req<RepoOut>(`/api/projects/${projectId}/repos`, {
+      method: "POST",
       body: JSON.stringify(body),
     }),
 
@@ -127,14 +165,6 @@ export const api = {
       `/api/projects/${projectId}/reports/${version}/pages/${pagePath}`,
       { method: "DELETE" },
     ),
-
-  getRelationships: () => req<WorkspaceDoc>("/api/workspace/relationships"),
-
-  putRelationships: (doc: WorkspaceDoc) =>
-    req<WorkspaceDoc>("/api/workspace/relationships", {
-      method: "PUT",
-      body: JSON.stringify(doc),
-    }),
 
   cancelIngest: (projectId: string) =>
     req<{ status: string }>(`/api/projects/${projectId}/ingest/cancel`, { method: "POST" }),
@@ -187,27 +217,3 @@ export type IngestRunDetail = {
   log: string;
 };
 
-export type RelationshipKind =
-  | "depends_on"
-  | "blocks"
-  | "shares_team"
-  | "supersedes";
-
-export type WorkspaceGroup = {
-  id: string;
-  name: string;
-  description: string;
-  projects: string[];
-};
-
-export type WorkspaceRelationship = {
-  from: string;
-  to: string;
-  kind: RelationshipKind;
-  note: string;
-};
-
-export type WorkspaceDoc = {
-  groups: WorkspaceGroup[];
-  relationships: WorkspaceRelationship[];
-};

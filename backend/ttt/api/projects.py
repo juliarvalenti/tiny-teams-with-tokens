@@ -8,21 +8,39 @@ from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from ttt.db import get_session
-from ttt.models import ChatMessage, ChatSession, IngestRun, PageRevision, Project, Report
+from ttt.models import (
+    ChatMessage,
+    ChatSession,
+    ConfluenceSpace,
+    IngestRun,
+    PageRevision,
+    Project,
+    Repo,
+    Report,
+    WebexRoom,
+)
 from ttt.services.projects import (
+    ConfluenceSpaceOut,
     ProjectCreate,
     ProjectSummary,
     ProjectUpdate,
+    RepoOut,
+    WebexRoomOut,
+    add_confluence_space,
+    add_repo,
+    add_webex_room,
     cancel_project_ingest,
     create_project_with_greenfield,
+    list_project_confluence_spaces,
+    list_project_repos,
     list_project_summaries,
+    list_project_webex_rooms,
     reingest_project,
     summarize,
 )
 
 router = APIRouter(tags=["projects"])
 
-# Re-exported for any older import paths.
 __all__ = ["router", "ProjectCreate", "ProjectSummary", "ProjectUpdate"]
 
 
@@ -44,20 +62,23 @@ def get_project(project_id: UUID, session: Session = Depends(get_session)) -> di
     if not project:
         raise HTTPException(404, "project not found")
     summary = summarize(session, project)
-    # Newest IngestRun for this project — UI uses this to stream the running
-    # agent's log into the "ingest in progress" surface.
     latest_run = session.exec(
         select(IngestRun)
         .where(IngestRun.project_id == project_id)
         .order_by(IngestRun.started_at.desc())
     ).first()
     return {
-        **summary.model_dump(),
+        **summary.model_dump(mode="json"),
         "charter": project.charter,
-        "repos": project.repos,
-        "confluence_roots": project.confluence_roots,
-        "webex_channels": project.webex_channels,
         "ingest_config": project.ingest_config,
+        "repos": [r.model_dump(mode="json") for r in list_project_repos(session, project_id)],
+        "webex_rooms": [
+            r.model_dump(mode="json") for r in list_project_webex_rooms(session, project_id)
+        ],
+        "confluence_spaces": [
+            r.model_dump(mode="json")
+            for r in list_project_confluence_spaces(session, project_id)
+        ],
         "latest_run_id": str(latest_run.id) if latest_run else None,
     }
 
@@ -77,6 +98,94 @@ def update_project(
     session.commit()
     session.refresh(project)
     return summarize(session, project)
+
+
+# ---------- sources: repos / webex / confluence ----------
+
+
+class RepoCreate(BaseModel):
+    url: str
+    slug: str | None = None
+    default_branch: str = "main"
+
+
+@router.get("/projects/{project_id}/repos", response_model=list[RepoOut])
+def list_repos(
+    project_id: UUID, session: Session = Depends(get_session)
+) -> list[RepoOut]:
+    return list_project_repos(session, project_id)
+
+
+@router.post("/projects/{project_id}/repos", response_model=RepoOut)
+def create_repo(
+    project_id: UUID,
+    body: RepoCreate,
+    session: Session = Depends(get_session),
+) -> RepoOut:
+    return add_repo(
+        session,
+        project_id,
+        body.url,
+        slug=body.slug,
+        default_branch=body.default_branch,
+    )
+
+
+class WebexRoomCreate(BaseModel):
+    name: str
+    slug: str | None = None
+    webex_id: str | None = None
+
+
+@router.get("/projects/{project_id}/webex", response_model=list[WebexRoomOut])
+def list_webex_rooms(
+    project_id: UUID, session: Session = Depends(get_session)
+) -> list[WebexRoomOut]:
+    return list_project_webex_rooms(session, project_id)
+
+
+@router.post("/projects/{project_id}/webex", response_model=WebexRoomOut)
+def create_webex_room(
+    project_id: UUID,
+    body: WebexRoomCreate,
+    session: Session = Depends(get_session),
+) -> WebexRoomOut:
+    return add_webex_room(
+        session, project_id, body.name, slug=body.slug, webex_id=body.webex_id
+    )
+
+
+class ConfluenceSpaceCreate(BaseModel):
+    name: str
+    space_key: str
+    slug: str | None = None
+    base_url: str = ""
+
+
+@router.get("/projects/{project_id}/confluence", response_model=list[ConfluenceSpaceOut])
+def list_confluence_spaces(
+    project_id: UUID, session: Session = Depends(get_session)
+) -> list[ConfluenceSpaceOut]:
+    return list_project_confluence_spaces(session, project_id)
+
+
+@router.post("/projects/{project_id}/confluence", response_model=ConfluenceSpaceOut)
+def create_confluence_space(
+    project_id: UUID,
+    body: ConfluenceSpaceCreate,
+    session: Session = Depends(get_session),
+) -> ConfluenceSpaceOut:
+    return add_confluence_space(
+        session,
+        project_id,
+        body.name,
+        body.space_key,
+        slug=body.slug,
+        base_url=body.base_url,
+    )
+
+
+# ---------- ingest lifecycle ----------
 
 
 class ReingestRequest(BaseModel):
@@ -131,7 +240,16 @@ def delete_project(project_id: UUID, session: Session = Depends(get_session)) ->
     if project.locked:
         raise HTTPException(409, "project is locked while ingest is running")
 
-    for model in (ChatMessage, ChatSession, PageRevision, IngestRun, Report):
+    for model in (
+        ChatMessage,
+        ChatSession,
+        PageRevision,
+        IngestRun,
+        Report,
+        Repo,
+        WebexRoom,
+        ConfluenceSpace,
+    ):
         rows = session.exec(select(model).where(model.project_id == project_id)).all()
         for row in rows:
             session.delete(row)

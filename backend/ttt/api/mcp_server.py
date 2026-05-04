@@ -24,15 +24,24 @@ from ttt.chat.agent import stream_chat
 from ttt.db import engine
 from ttt.models import ChatSession, Project, Report
 from ttt.services.projects import (
+    ConfluenceSpaceOut,
     IngestRunDetail,
     IngestRunRef,
     ProjectCreate,
     ProjectSummary,
+    RepoOut,
+    WebexRoomOut,
+    add_confluence_space,
+    add_repo,
+    add_webex_room,
     cancel_project_ingest,
     create_project_with_greenfield,
     get_ingest_run_detail,
     latest_ingest_run_for_project,
+    list_project_confluence_spaces,
+    list_project_repos,
     list_project_summaries,
+    list_project_webex_rooms,
     reingest_project,
 )
 
@@ -56,28 +65,117 @@ def ttt_create_project(
     name: str,
     charter: str = "",
     repos: list[str] | None = None,
-    confluence_roots: list[str] | None = None,
-    webex_channels: list[str] | None = None,
+    phase: str | None = None,
+    cadence: str | None = None,
     user_bindings: dict[str, Any] | None = None,
     ingest_config: dict[str, Any] | None = None,
 ) -> ProjectSummary:
     """Create a new TTT project and kick off a greenfield ingest.
 
-    Args mirror `ProjectCreate`. The greenfield ingest runs in the background
-    against the configured repos; poll `ttt_list_projects` to watch the
-    `latest_version` field appear once the first ingest completes.
+    Args:
+        name: Display name (e.g. "Internet of Cognition").
+        charter: Free-form one-paragraph "what is this and why".
+        repos: GitHub repo URLs / `owner/name` strings to seed as Repos.
+        phase: Lifecycle phase (prototype | venture | active | sunset).
+        cadence: Expected change cadence (weekly | monthly | quiet).
+        user_bindings: Free-form metadata.
+        ingest_config: Free-form ingest knobs.
+
+    Webex rooms and Confluence spaces are added separately via
+    `ttt_add_webex_room` / `ttt_add_confluence_space` after creation.
     """
     body = ProjectCreate(
         name=name,
         charter=charter,
+        phase=phase,
+        cadence=cadence,
         repos=repos or [],
-        confluence_roots=confluence_roots or [],
-        webex_channels=webex_channels or [],
         user_bindings=user_bindings or {},
         ingest_config=ingest_config or {},
     )
     with Session(engine) as session:
         return create_project_with_greenfield(session, body)
+
+
+# ---------- source attachment ----------
+
+
+@mcp.tool()
+def ttt_list_repos(project_id: str) -> list[RepoOut]:
+    """List GitHub repos attached to a project."""
+    pid = _parse_uuid(project_id, "project_id")
+    with Session(engine) as session:
+        return list_project_repos(session, pid)
+
+
+@mcp.tool()
+def ttt_add_repo(
+    project_id: str,
+    url: str,
+    slug: str | None = None,
+    default_branch: str = "main",
+) -> RepoOut:
+    """Attach a GitHub repo to a project. The repo's content lands in the
+    wiki under `repos/<slug>/...` after the next ingest. `slug` defaults to
+    the repo's last path segment (e.g. `mycelium-io/mycelium` → `mycelium`)."""
+    pid = _parse_uuid(project_id, "project_id")
+    with Session(engine) as session:
+        return add_repo(session, pid, url, slug=slug, default_branch=default_branch)
+
+
+@mcp.tool()
+def ttt_list_webex_rooms(project_id: str) -> list[WebexRoomOut]:
+    """List Webex rooms attached to a project."""
+    pid = _parse_uuid(project_id, "project_id")
+    with Session(engine) as session:
+        return list_project_webex_rooms(session, pid)
+
+
+@mcp.tool()
+def ttt_add_webex_room(
+    project_id: str,
+    name: str,
+    slug: str | None = None,
+    webex_id: str | None = None,
+) -> WebexRoomOut:
+    """Attach a Webex room to a project. Synthesized into `webex/<slug>/...`
+    once the Webex connector is wired. `name` is the human display name
+    (e.g. `"IoC::Mycelium::SRE"`); `slug` defaults to a slugified version."""
+    pid = _parse_uuid(project_id, "project_id")
+    with Session(engine) as session:
+        return add_webex_room(session, pid, name, slug=slug, webex_id=webex_id)
+
+
+@mcp.tool()
+def ttt_list_confluence_spaces(project_id: str) -> list[ConfluenceSpaceOut]:
+    """List Confluence spaces attached to a project."""
+    pid = _parse_uuid(project_id, "project_id")
+    with Session(engine) as session:
+        return list_project_confluence_spaces(session, pid)
+
+
+@mcp.tool()
+def ttt_add_confluence_space(
+    project_id: str,
+    name: str,
+    space_key: str,
+    slug: str | None = None,
+    base_url: str = "",
+) -> ConfluenceSpaceOut:
+    """Attach a Confluence space to a project. Synthesized into
+    `confluence/<slug>/...` once the Confluence connector is wired."""
+    pid = _parse_uuid(project_id, "project_id")
+    with Session(engine) as session:
+        return add_confluence_space(
+            session, pid, name, space_key, slug=slug, base_url=base_url
+        )
+
+
+def _parse_uuid(raw: str, field: str) -> UUID:
+    try:
+        return UUID(raw)
+    except ValueError as e:
+        raise ValueError(f"invalid {field}: {raw!r}") from e
 
 
 @mcp.tool()

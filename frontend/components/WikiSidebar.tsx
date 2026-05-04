@@ -1,6 +1,6 @@
 "use client";
 
-import { Eye, EyeOff, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Eye, EyeOff, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { PageNode } from "@/lib/api";
 import { KindBadge } from "./KindBadge";
@@ -152,56 +152,76 @@ function Branch({
   disabled?: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   const isActive = node.path === activePath;
+  const isFolder = node.kind === "folder";
+  const Chevron = collapsed ? ChevronRight : ChevronDown;
   return (
     <li>
       <div
-        className={`group flex items-center justify-between rounded px-2 py-1 ${
-          isActive
-            ? "bg-neutral-200 dark:bg-neutral-800"
-            : "hover:bg-neutral-100 dark:hover:bg-neutral-900"
+        className={`group flex min-w-0 items-center justify-between rounded px-2 py-1 ${
+          isFolder
+            ? "cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-900"
+            : isActive
+              ? "bg-neutral-200 dark:bg-neutral-800"
+              : "hover:bg-neutral-100 dark:hover:bg-neutral-900"
         }`}
         style={{ paddingLeft: `${0.5 + depth * 0.75}rem` }}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
+        onMouseEnter={() => !isFolder && setHovered(true)}
+        onMouseLeave={() => !isFolder && setHovered(false)}
       >
-        <button
-          onClick={() => onSelect(node.path)}
-          className="flex flex-1 items-center gap-2 text-left"
-        >
-          <KindBadge kind={node.kind} iconOnly />
-          <span className="truncate">{node.title}</span>
-        </button>
-        <div
-          className={`flex items-center gap-0.5 ${
-            hovered ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-          }`}
-        >
+        {isFolder ? (
           <button
-            onClick={() => onCreatePage(node.path)}
-            disabled={disabled}
-            title="Add a sub-page"
-            className="rounded px-1 text-xs text-neutral-500 hover:bg-neutral-200 hover:text-neutral-900 disabled:opacity-40 dark:hover:bg-neutral-700 dark:hover:text-neutral-100"
+            type="button"
+            onClick={() => setCollapsed((c) => !c)}
+            className="flex min-w-0 flex-1 items-center gap-1 text-left text-xs font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400"
           >
-            +
+            <Chevron className="h-3 w-3 shrink-0" />
+            <span className="truncate">{node.title}</span>
           </button>
-          {onDeletePage && (
+        ) : (
+          <button
+            onClick={() => onSelect(node.path)}
+            className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          >
+            <span className="shrink-0">
+              <KindBadge kind={node.kind as Exclude<typeof node.kind, "folder">} iconOnly />
+            </span>
+            <span className="truncate">{node.title}</span>
+          </button>
+        )}
+        {!isFolder && (
+          <div
+            className={`flex items-center gap-0.5 ${
+              hovered ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+            }`}
+          >
             <button
-              onClick={() => {
-                if (confirm(`Delete ${node.path}? History stays in the audit log.`)) {
-                  onDeletePage(node.path);
-                }
-              }}
+              onClick={() => onCreatePage(node.path)}
               disabled={disabled}
-              title="Delete page (soft)"
-              className="rounded p-0.5 text-neutral-500 hover:bg-red-100 hover:text-red-600 disabled:opacity-40 dark:hover:bg-red-900/40 dark:hover:text-red-400"
+              title="Add a sub-page"
+              className="rounded px-1 text-xs text-neutral-500 hover:bg-neutral-200 hover:text-neutral-900 disabled:opacity-40 dark:hover:bg-neutral-700 dark:hover:text-neutral-100"
             >
-              <Trash2 className="h-3 w-3" />
+              +
             </button>
-          )}
-        </div>
+            {onDeletePage && (
+              <button
+                onClick={() => {
+                  if (confirm(`Delete ${node.path}? History stays in the audit log.`)) {
+                    onDeletePage(node.path);
+                  }
+                }}
+                disabled={disabled}
+                title="Delete page (soft)"
+                className="rounded p-0.5 text-neutral-500 hover:bg-red-100 hover:text-red-600 disabled:opacity-40 dark:hover:bg-red-900/40 dark:hover:text-red-400"
+              >
+                <Trash2 className="h-3 w-3" />
+              </button>
+            )}
+          </div>
+        )}
       </div>
-      {node.children.length > 0 && (
+      {node.children.length > 0 && !collapsed && (
         <ul className="mt-0.5 space-y-0.5">
           {node.children.map((child) => (
             <Branch

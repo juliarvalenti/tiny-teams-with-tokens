@@ -24,20 +24,9 @@ class Settings(BaseSettings):
     # Filesystem cache mirroring the latest page state — sqlite is authoritative.
     # The chat agent's Read/Edit/Write tools operate on these files directly.
     ttt_wiki_dir: Path = _PROJECT_ROOT / "data" / "wiki"
-    # Workspace-level relationships file — projects, groups, dependencies.
-    # File-as-source-of-truth: agents read/write via MCP, UI reads/writes via API.
-    ttt_relationships_path: Path = _PROJECT_ROOT / "data" / "relationships.yaml"
 
-    extractor_model: str = "claude-haiku-4-5"
-    synthesizer_model: str = "claude-haiku-4-5"
     ingest_model: str = "claude-haiku-4-5"
     chat_model: str = "claude-sonnet-4-6"
-
-    # "static" = the original fan-out pipeline (extractors + page synthesizers).
-    # "agent"  = Claude Agent SDK loop with in-process GitHub MCP. Cheaper to
-    #           reason about, easier to extend (#13 backlinks, #8 team), but
-    #           less deterministic per ingest.
-    ingest_mode: str = "static"
 
 
 settings = Settings()

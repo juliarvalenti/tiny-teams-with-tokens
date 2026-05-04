@@ -24,7 +24,6 @@ from claude_agent_sdk import ClaudeAgentOptions, HookMatcher
 
 from ttt.config import settings
 from ttt.pipeline.mcp_github import build_github_mcp
-from ttt.pipeline.mcp_workspace import build_workspace_mcp
 from ttt.reports import repo as report_repo
 
 log = logging.getLogger("ttt.agent")
@@ -46,10 +45,6 @@ GITHUB_MCP_TOOLS = [
     "mcp__github__github_get_file",
     "mcp__github__github_list_dir",
     "mcp__github__github_get_readme",
-]
-WORKSPACE_MCP_TOOLS = [
-    "mcp__workspace__workspace_get_relationships",
-    "mcp__workspace__workspace_update_relationships",
 ]
 
 
@@ -211,17 +206,16 @@ def build_agent_options(
     report_repo.sync_to_disk(project_id)
 
     gh_server = build_github_mcp(project_repos, token=settings.github_token)
-    workspace_server = build_workspace_mcp()
 
     return ClaudeAgentOptions(
         cwd=str(project_dir),
-        allowed_tools=[*WIKI_TOOLS, *WEB_TOOLS, *GITHUB_MCP_TOOLS, *WORKSPACE_MCP_TOOLS],
+        allowed_tools=[*WIKI_TOOLS, *WEB_TOOLS, *GITHUB_MCP_TOOLS],
         permission_mode="acceptEdits",
         system_prompt=system_prompt,
         model=model,
         resume=resume,
         setting_sources=[],
-        mcp_servers={"github": gh_server, "workspace": workspace_server},
+        mcp_servers={"github": gh_server},
         env={
             "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
             "ANTHROPIC_API_KEY": settings.anthropic_api_key,
